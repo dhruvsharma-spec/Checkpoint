@@ -1,0 +1,106 @@
+{{- $c := dict "root" . "component" "frontend" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}-frontend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "cp.selector" $c | nindent 4 }}
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+---
+# The screens only. No database access and no secrets; every /api request is forwarded to the backend service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cp.name" . }}-frontend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.frontend.autoscaling.enabled }}
+  replicas: {{ .Values.frontend.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.selector" $c | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {{- include "cp.podSecurity" . | nindent 8 }}
+      {{- include "cp.placement" $c | nindent 6 }}
+      containers:
+        - name: web
+          image: {{ include "cp.image" (dict "root" . "name" .Values.image.frontend) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: BACKEND_URL, value: "http://{{ include "cp.name" . }}-backend:4000" }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            failureThreshold: 4
+          lifecycle:
+            preStop: { sleep: { seconds: 5 } }
+          securityContext: {{- include "cp.containerSecurity" . | nindent 12 }}
+          resources: {{- toYaml .Values.frontend.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- if .Values.frontend.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "cp.name" . }}-frontend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "cp.name" . }}-frontend }
+  minReplicas: {{ .Values.frontend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.frontend.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ .Values.frontend.autoscaling.cpu }} } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 300 }
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cp.name" . }}-frontend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "cp.name" . }}
+  labels: {{- include "cp.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations: {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: {{ include "cp.name" . }}-frontend, port: { number: 3000 } }
+{{- end }}

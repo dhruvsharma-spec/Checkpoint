@@ -1,0 +1,89 @@
+{{- if .Values.backup.enabled }}
+{{- if not .Values.backup.bucket }}{{ fail "backup.bucket is required when backup.enabled is true" }}{{ end }}
+# A consistent logical dump of the database (mysqldump --single-transaction, no locks), gzipped and copied to S3:
+#   s3://<bucket>/<prefix>/<namespace>/YYYY/MM/DD/checkpoint-<timestamp>.sql.gz
+# How long dumps are kept is an S3 lifecycle rule on the bucket. EBS snapshots of the volume (AWS Backup) are the
+# second layer; see docs/EKS.md for both, and for restoring.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.backup.serviceAccount }}
+  labels: {{- include "cp.labels" . | nindent 4 }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "cp.name" . }}-mysql-backup
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: {{ .Values.backup.keepJobs }}
+  failedJobsHistoryLimit: {{ .Values.backup.keepJobs }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/instance: {{ .Release.Name }}
+            app.kubernetes.io/component: backup
+        spec:
+          serviceAccountName: {{ .Values.backup.serviceAccount }}
+          restartPolicy: Never
+          securityContext: { runAsNonRoot: true, runAsUser: 999, runAsGroup: 999, fsGroup: 999, seccompProfile: { type: RuntimeDefault } }
+          {{- with .Values.nodeSelector }}
+          nodeSelector: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          initContainers:
+            # 1. Dump. A failed dump fails the job, so a broken file is never uploaded.
+            - name: dump
+              image: {{ .Values.mysql.image }}
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  mysqldump -h {{ include "cp.name" . }}-mysql -uroot -p"$MYSQL_ROOT_PASSWORD" \
+                    --single-transaction --routines --triggers --events --set-gtid-purged=OFF --databases checkpoint \
+                    | gzip -6 > /backup/dump.sql.gz
+                  gzip -t /backup/dump.sql.gz
+                  ls -l /backup/dump.sql.gz
+              env:
+                - name: MYSQL_ROOT_PASSWORD
+                  valueFrom: { secretKeyRef: { name: {{ .Values.existingSecret }}, key: MYSQL_ROOT_PASSWORD } }
+              volumeMounts: [{ name: backup, mountPath: /backup }]
+              securityContext: {{- include "cp.containerSecurity" . | nindent 16 }}
+              resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { memory: 1Gi } }
+          containers:
+            # 2. Upload, with server-side encryption. Credentials come from EKS Pod Identity.
+            - name: upload
+              image: amazon/aws-cli:2.22.35
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  key="{{ .Values.backup.prefix }}/{{ .Release.Namespace }}/$(date -u +%Y/%m/%d)/checkpoint-$(date -u +%Y%m%dT%H%M%SZ).sql.gz"
+                  aws s3 cp /backup/dump.sql.gz "s3://{{ .Values.backup.bucket }}/$key" --sse AES256 --only-show-errors
+                  echo "Uploaded s3://{{ .Values.backup.bucket }}/$key"
+              env:
+                - { name: HOME, value: /tmp }
+                - { name: AWS_REGION, value: ap-south-1 }
+              volumeMounts:
+                - { name: backup, mountPath: /backup, readOnly: true }
+                - { name: tmp, mountPath: /tmp }
+              securityContext: {{- include "cp.containerSecurity" . | nindent 16 }}
+              resources: { requests: { cpu: 50m, memory: 128Mi }, limits: { memory: 512Mi } }
+          volumes:
+            - name: backup
+              emptyDir: { sizeLimit: 20Gi }
+            - name: tmp
+              emptyDir: {}
+{{- end }}

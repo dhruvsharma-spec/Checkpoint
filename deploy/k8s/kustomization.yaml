@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: checkpoint
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - mysql.yaml
+  - mailpit.yaml
+  - backend.yaml
+  - frontend.yaml
+  - worker.yaml
+
+# The project's copy of the approval matrix. It is only the starting copy: the first start copies it into the
+# database, and an admin edits it from the UI. See approvers-export and approvers-reset.
+configMapGenerator:
+  - name: checkpoint-approvers
+    files:
+      - approvers.yaml
+  # The database servers offered in the Database CCB. Edit the two files and run "./scripts/minikube.sh apply".
+  - name: checkpoint-inventory
+    files:
+      - mysql-inventory.yaml
+      - mongodb-inventory.yaml
+  # The people loaded at start. Editing users.yaml and running "./scripts/minikube.sh apply" restarts the backend, which loads them.
+  - name: checkpoint-users
+    files:
+      - users.yaml

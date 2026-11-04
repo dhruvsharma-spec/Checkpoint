@@ -1,0 +1,115 @@
+{{- $c := dict "root" . "component" "backend" -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}-backend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  selector: {{- include "cp.selector" $c | nindent 4 }}
+  ports:
+    - { name: http, port: 4000, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cp.name" . }}-backend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.backend.autoscaling.enabled }}
+  replicas: {{ .Values.backend.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.selector" $c | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {{- include "cp.podSecurity" . | nindent 8 }}
+      {{- include "cp.placement" $c | nindent 6 }}
+      initContainers:
+        {{- include "cp.waitForDb" . | nindent 8 }}
+        # Applies database migrations (prisma/migrations; Prisma takes a lock, so several pods starting together is
+        # safe), then makes sure the CCB types exist and the people in users.yaml are in. Never drops data.
+        - name: migrate
+          image: {{ include "cp.image" (dict "root" . "name" .Values.image.backend) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /app
+          command: ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts"]
+          envFrom:
+            - configMapRef: { name: {{ include "cp.name" . }}-config }
+            - secretRef: { name: {{ .Values.existingSecret }} }
+          volumeMounts:
+            - { name: seed, mountPath: /seed, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+          securityContext: {{- include "cp.containerSecurity" . | nindent 12 }}
+          resources: {{- toYaml .Values.backend.resources | nindent 12 }}
+      containers:
+        - name: api
+          image: {{ include "cp.image" (dict "root" . "name" .Values.image.backend) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - { name: http, containerPort: 4000 }
+          envFrom:
+            - configMapRef: { name: {{ include "cp.name" . }}-config }
+            - secretRef: { name: {{ .Values.existingSecret }} }
+          volumeMounts:
+            - { name: seed, mountPath: /seed, readOnly: true }
+            - { name: inventory, mountPath: /inventory, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+          startupProbe:
+            httpGet: { path: /api/live, port: http }
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /api/live, port: http }
+            periodSeconds: 15
+            failureThreshold: 4
+          lifecycle:
+            # Gives the load balancer time to stop sending new requests before the server closes.
+            preStop: { sleep: { seconds: 5 } }
+          securityContext: {{- include "cp.containerSecurity" . | nindent 12 }}
+          resources: {{- toYaml .Values.backend.resources | nindent 12 }}
+      volumes:
+        - name: seed
+          configMap: { name: {{ include "cp.name" . }}-seed }
+        - name: inventory
+          configMap: { name: {{ include "cp.name" . }}-inventory }
+        - name: tmp
+          emptyDir: {}
+{{- if .Values.backend.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "cp.name" . }}-backend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: {{ include "cp.name" . }}-backend }
+  minReplicas: {{ .Values.backend.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.backend.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: {{ .Values.backend.autoscaling.cpu }} } }
+  behavior:
+    scaleDown: { stabilizationWindowSeconds: 300 }
+{{- end }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "cp.name" . }}-backend
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}

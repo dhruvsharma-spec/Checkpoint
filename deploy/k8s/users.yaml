@@ -1,0 +1,21 @@
+# PEOPLE WHO EXIST IN CHECKPOINT
+#
+# This list is loaded every time the backend starts. A person listed here who is not in Checkpoint yet is
+# created with the access written here. A person who is already in Checkpoint is left as they are, so
+# access changes made in the UI (Access Management) are never undone by this file.
+#
+# Anyone can also be added in the UI, and anyone who signs in with Google is added automatically as a member.
+# This file is for preloading people, and for keeping the first admins in the project.
+#
+#   access: member   file and manage CCBs, cannot delete them
+#   access: power    also delete CCBs
+#   access: admin    also edit approvers and change access
+#
+# Only lenskart.com and lenskart.in emails are accepted; anything else is skipped.
+# To save who is in Checkpoint right now into this file:  ./scripts/minikube.sh users-export
+# To load changes to this file:                           ./scripts/minikube.sh apply
+
+users:
+  - { name: Dhruv Sharma, email: dhruv.sharma@lenskart.com, access: admin }
+aws ec2 describe-volumes --filters Name=status,Values=available \
+  --query 'Volumes[].[VolumeId,Size,VolumeType]' --output table

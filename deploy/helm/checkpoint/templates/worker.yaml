@@ -1,0 +1,40 @@
+{{- $c := dict "root" . "component" "worker" -}}
+# Sends the emails the API queues in the database, with retries. Same image as the backend, different command.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cp.name" . }}-worker
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.selector" $c | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 30
+      securityContext: {{- include "cp.podSecurity" . | nindent 8 }}
+      {{- include "cp.placement" $c | nindent 6 }}
+      initContainers:
+        {{- include "cp.waitForDb" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "cp.image" (dict "root" . "name" .Values.image.backend) }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          workingDir: /app
+          command: ["npx", "tsx", "worker/index.ts"]
+          envFrom:
+            - configMapRef: { name: {{ include "cp.name" . }}-config }
+            - secretRef: { name: {{ .Values.existingSecret }} }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+          securityContext: {{- include "cp.containerSecurity" . | nindent 12 }}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,59 @@
+# Karpenter (v1 API) nodes for the devx namespaces (devx-stg, devx-prod). Cluster-wide objects: applied once, by a
+# cluster admin, not by the Helm chart.
+#   kubectl --context arn:aws:eks:ap-south-1:964059510816:cluster/lk-tech-infra-02-eks apply -f deploy/karpenter/devx-nodepool.yaml
+#
+# Before applying, check the three CHANGE-ME values against the cluster's existing EC2NodeClass:
+#   kubectl --context <eks> get ec2nodeclass -o yaml
+# (the node IAM role, and the discovery tag on the cluster's subnets and security groups).
+#
+# The app pods use this pool when the Helm values set:  nodeSelector: { karpenter.sh/nodepool: devx }
+# Nodes are added and removed as pods need them (that is the horizontal scaling of the nodes); the HPAs in the chart
+# scale the pods.
+apiVersion: karpenter.k8s.aws/v1
+kind: EC2NodeClass
+metadata:
+  name: devx
+spec:
+  role: CHANGE-ME-karpenter-node-role          # the node IAM role used by the cluster's other NodeClass
+  amiSelectorTerms:
+    - alias: al2023@latest
+  subnetSelectorTerms:
+    - tags: { karpenter.sh/discovery: lk-tech-infra-02-eks }   # CHANGE-ME if the subnets use another tag
+  securityGroupSelectorTerms:
+    - tags: { karpenter.sh/discovery: lk-tech-infra-02-eks }   # CHANGE-ME if the security groups use another tag
+  metadataOptions:
+    httpTokens: required                       # IMDSv2 only
+    httpPutResponseHopLimit: 1                 # pods cannot reach the node's instance credentials
+  blockDeviceMappings:
+    - deviceName: /dev/xvda
+      ebs: { volumeSize: 40Gi, volumeType: gp3, encrypted: true, deleteOnTermination: true }
+  tags:
+    team: devx
+    app: checkpoint
+---
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: devx
+spec:
+  template:
+    metadata:
+      labels: { workload: devx }
+    spec:
+      nodeClassRef: { group: karpenter.k8s.aws, kind: EC2NodeClass, name: devx }
+      # On-demand only: the database runs here, and spot interruptions would move it.
+      requirements:
+        - { key: karpenter.sh/capacity-type, operator: In, values: [on-demand] }
+        - { key: kubernetes.io/arch, operator: In, values: [amd64, arm64] }
+        - { key: karpenter.k8s.aws/instance-category, operator: In, values: [m, c, r] }
+        - { key: karpenter.k8s.aws/instance-generation, operator: Gt, values: ["5"] }
+        - { key: karpenter.k8s.aws/instance-size, operator: In, values: [large, xlarge, 2xlarge] }
+      expireAfter: 720h                        # nodes are replaced every 30 days (patched AMIs)
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 5m
+    budgets:
+      - nodes: "1"                             # replace at most one node at a time
+  limits:
+    cpu: "32"
+    memory: 128Gi

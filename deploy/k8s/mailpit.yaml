@@ -1,0 +1,38 @@
+# A fake mail server for local use: it catches every email the API sends so you can read it
+# in a browser (port 8025) instead of delivering it.
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkpoint-mail
+  namespace: checkpoint
+spec:
+  selector: { app: checkpoint-mail }
+  ports:
+    - { name: smtp, port: 1025, targetPort: smtp }
+    - { name: ui, port: 8025, targetPort: ui }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkpoint-mail
+  namespace: checkpoint
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: checkpoint-mail }
+  template:
+    metadata:
+      labels: { app: checkpoint-mail }
+    spec:
+      containers:
+        - name: mailpit
+          image: axllent/mailpit:v1.21
+          ports:
+            - { name: smtp, containerPort: 1025 }
+            - { name: ui, containerPort: 8025 }
+          readinessProbe:
+            httpGet: { path: /livez, port: ui }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 25m, memory: 48Mi }
+            limits: { memory: 192Mi }

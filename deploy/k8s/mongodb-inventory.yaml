@@ -1,0 +1,148 @@
+# MONGODB SERVERS
+#
+# Used by the Database CCB: when MongoDB is chosen, the form offers a cluster, then a role within it, then the
+# IPs. A person can also type an IP that is not listed.
+#
+# type is Replica or Sharded. role is free text, for example Primary, Secondary, Arbiter, Router, Config Primary,
+# Shard 1 Primary. managed_by says what runs the routers (optional).
+#
+# To change it: edit this file, then run ./scripts/minikube.sh apply
+# Built from the "MongoDB Inventory - NOC" sheet.
+
+clusters:
+  - name: "Bridge Prod"
+    type: "Replica"
+    servers:
+      - { ip: "10.85.1.6", role: "Primary" }
+      - { ip: "10.85.0.14", role: "Secondary" }
+      - { ip: "10.85.1.144", role: "Secondary" }
+  - name: "Juno Prod"
+    type: "Sharded"
+    managed_by: "EKS & EC2"
+    servers:
+      - { ip: "172.31.2.7", role: "Router" }
+      - { ip: "172.31.42.32", role: "Router" }
+      - { ip: "172.31.43.34", role: "Router" }
+      - { ip: "172.31.42.248", role: "Router" }
+      - { ip: "172.31.3.3", role: "Config Primary" }
+      - { ip: "172.31.6.64", role: "Config Secondary" }
+      - { ip: "172.31.9.32", role: "Config Secondary" }
+      - { ip: "172.31.2.59", role: "Shard 1 Secondary" }
+      - { ip: "172.31.15.62", role: "Shard 1 Secondary" }
+      - { ip: "172.31.6.238", role: "Shard 1 Primary" }
+      - { ip: "172.31.33.158", role: "Shard 1 Secondary" }
+      - { ip: "172.31.5.173", role: "Shard 2 Primary" }
+      - { ip: "172.31.3.17", role: "Shard 2 Secondary" }
+      - { ip: "172.31.6.242", role: "Shard 2 Secondary" }
+      - { ip: "172.31.33.219", role: "Shard 2 Secondary" }
+      - { ip: "172.31.33.154", role: "Shard 3 Secondary" }
+      - { ip: "172.31.13.195", role: "Shard 3 Secondary" }
+      - { ip: "172.31.10.153", role: "Shard 3 Secondary" }
+      - { ip: "172.31.7.243", role: "Shard 3 Primary" }
+  - name: "SCM Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.43.48", role: "Primary" }
+      - { ip: "172.31.43.249", role: "Secondary" }
+      - { ip: "172.31.43.191", role: "Secondary" }
+  - name: "Mumbai Juno (or) Cygnus Prod"
+    type: "Replica"
+    servers:
+      - { ip: "10.85.1.10", role: "Primary" }
+      - { ip: "10.85.0.157", role: "Secondary" }
+      - { ip: "10.85.0.80", role: "Arbiter" }
+  - name: "POS Auth Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.33.15", role: "Primary" }
+      - { ip: "172.31.33.194", role: "Secondary" }
+      - { ip: "172.31.33.253", role: "Secondary" }
+  - name: "POS Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.33.156", role: "Primary" }
+      - { ip: "172.31.33.87", role: "Secondary" }
+      - { ip: "172.31.33.206", role: "Arbiter" }
+  - name: "Juno LK Wallet Prod"
+    type: "Sharded"
+    managed_by: "EC2"
+    servers:
+      - { ip: "172.31.40.20", role: "Router" }
+      - { ip: "172.31.40.62", role: "Config Primary" }
+      - { ip: "172.31.42.201", role: "Config Secondary" }
+      - { ip: "172.31.41.1", role: "Config Secondary" }
+      - { ip: "172.31.41.219", role: "Shard 1 Primary" }
+      - { ip: "172.31.43.157", role: "Shard 1 Secondary" }
+      - { ip: "172.31.43.39", role: "Shard 1 Secondary" }
+      - { ip: "172.31.42.56", role: "Shard 2 Primary" }
+      - { ip: "172.31.42.60", role: "Shard 2 Secondary" }
+      - { ip: "172.31.43.152", role: "Shard 2 Secondary" }
+  - name: "COSMOS Prod"
+    type: "Sharded"
+    managed_by: "EC2"
+    servers:
+      - { ip: "10.85.0.50", role: "Router" }
+      - { ip: "10.85.1.150", role: "Config Primary" }
+      - { ip: "10.85.0.21", role: "Config Secondary" }
+      - { ip: "10.85.1.38", role: "Config Secondary" }
+      - { ip: "10.85.1.219", role: "Shard 1 Primary" }
+      - { ip: "10.85.1.1", role: "Shard 1 Secondary" }
+      - { ip: "10.85.1.23", role: "Shard 1 Secondary" }
+      - { ip: "10.85.0.78", role: "Shard 2 Primary" }
+      - { ip: "10.85.1.73", role: "Shard 2 Secondary" }
+      - { ip: "10.85.1.113", role: "Shard 2 Secondary" }
+  - name: "Shark Tank Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.33.212", role: "Secondary" }
+      - { ip: "172.31.33.150", role: "Primary" }
+      - { ip: "172.31.33.22", role: "Secondary" }
+  - name: "Juno Event Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.43.102", role: "Primary" }
+      - { ip: "172.31.43.235", role: "Secondary" }
+      - { ip: "172.31.42.184", role: "Secondary" }
+  - name: "LK Platform Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.43.118", role: "Primary" }
+      - { ip: "172.31.40.246", role: "Secondary" }
+      - { ip: "172.31.42.5", role: "Secondary" }
+  - name: "POS Fitting Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.40.175", role: "Member" }
+  - name: "Nexs Prod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.40.116", role: "Member" }
+  - name: "Bridge Preprod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.33.83", role: "Member" }
+  - name: "SCM Preprod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.42.85", role: "Member" }
+  - name: "Juno Preprod"
+    type: "Sharded"
+    managed_by: "EKS & EC2"
+    servers:
+      - { ip: "172.31.42.151", role: "Router" }
+      - { ip: "172.31.40.27", role: "Config" }
+      - { ip: "172.31.41.169", role: "Shard 1" }
+      - { ip: "172.31.42.250", role: "Shard 2" }
+      - { ip: "172.31.40.168", role: "Shard 3" }
+  - name: "POS Auth Preprod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.33.6", role: "Member" }
+  - name: "POS Preprod"
+    type: "Replica"
+    servers:
+      - { ip: "10.200.6.14", role: "Member" }
+  - name: "Shark Tank Preprod"
+    type: "Replica"
+    servers:
+      - { ip: "172.31.41.105", role: "Member" }

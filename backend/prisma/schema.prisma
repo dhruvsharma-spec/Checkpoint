@@ -1,0 +1,184 @@
+// MySQL 8. Long text is TEXT (MySQL strings default to VARCHAR(191)); lists are JSON.
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum Implementation {
+  NONE
+  LANDED
+  ROLLED_BACK
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  // What the person may do: member (file and manage CCBs), power (also delete CCBs), admin (also manage access).
+  access       String    @default("member")
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  ccbs      Ccb[]       @relation("Requester")
+  decisions Approval[]
+  analyses  Analysis[]
+  comments  Comment[]
+  audit     AuditLog[]
+}
+
+model Ccb {
+  id             String         @id @default(cuid())
+  code           String         @unique // CCB-0142 or DT-15154
+  type           String // Template.key, e.g. cloudflare
+  title          String         @db.VarChar(255)
+  environment    String         @default("Production")
+  risk           String // Low | Medium | High
+  windowAt       DateTime // change window start, stored in UTC
+  windowEndAt    DateTime? // change window end
+  businessUnit   String         @default("")
+  systemOwner    String         @default("") // email of the owner of the system being changed
+  ownerTeam      String         @default("DevOps") // DevOps | DataOps | Development | Security
+  devTeam        String         @default("") // the development team asked at the Developer step (POS, Juno, ...)
+  requesterId    String
+  requester      User           @relation("Requester", fields: [requesterId], references: [id])
+  // Answers for the template fields, keyed by field key.
+  data           Json
+  implementation Implementation @default(NONE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  approvals Approval[]
+  comments  Comment[]
+  audit     AuditLog[]
+  analyses  Analysis[]
+
+  @@index([windowAt])
+  @@index([type])
+}
+
+model Approval {
+  id          String         @id @default(cuid())
+  ccbId       String
+  ccb         Ccb            @relation(fields: [ccbId], references: [id], onDelete: Cascade)
+  role        String // LK Tech, LK Platform, Security, QA, DevOps, DataOps
+  group       String         @default("") // for LK Tech: the team that owns the service (POS, Juno, ...)
+  // The one person asked. Empty on CCBs filed before people were picked: then anyone listed for the role can answer.
+  email       String         @default("")
+  name        String         @default("")
+  // Only the order they are listed in. Everyone is asked at the same time.
+  stage       Int            @default(0)
+  label       String         @default("")
+  status      ApprovalStatus @default(PENDING)
+  decidedById String?
+  decidedBy   User?          @relation(fields: [decidedById], references: [id])
+  decidedAt   DateTime?
+  note        String?        @db.Text
+
+  @@index([ccbId])
+}
+
+// What DevOps, DataOps or QA found when they looked at a CCB, added after it is filed. One per team per CCB; anyone
+// listed for that team can write or update it.
+model Analysis {
+  id        String   @id @default(cuid())
+  ccbId     String
+  ccb       Ccb      @relation(fields: [ccbId], references: [id], onDelete: Cascade)
+  team      String // DevOps | DataOps | QA
+  body      String   @db.Text
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  updatedAt DateTime @updatedAt
+
+  @@unique([ccbId, team])
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  ccbId     String
+  ccb       Ccb      @relation(fields: [ccbId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([ccbId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  ccbId     String?
+  ccb       Ccb?     @relation(fields: [ccbId], references: [id], onDelete: SetNull)
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String   @db.Text
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([ccbId])
+  @@index([createdAt])
+}
+
+// The catalog of change kinds (backend/src/templates.ts), copied here by the seed.
+model Template {
+  key         String  @id // general | cloudflare | database ...
+  name        String
+  category    String  @default("Other") // the heading it is listed under when picking a type
+  blurb       String  @db.Text
+  tone        String  @default("med") // med | high, only drives the dot colour on the picker
+  series      String  @default("ccb") // ccb = CCB-0001, dt = DT-15001
+  defaultTeam String  @default("DevOps")
+  defaultRisk String  @default("Medium")
+  skipQa      Boolean @default(false)
+  manual      Boolean @default(false) // suggests nothing; the requester fills in every choice
+  sort        Int     @default(0)
+  spec        Json // { questions, fields }
+  version     Int     @default(1)
+}
+
+enum OutboxStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// Every email is written here first and sent by the worker, so a restart or a mail outage
+// never loses a message. The worker retries with growing delays, then marks it FAILED.
+model Outbox {
+  id            String       @id @default(cuid())
+  to            Json // list of addresses
+  subject       String       @db.VarChar(500)
+  html          String       @db.MediumText
+  text          String       @db.MediumText
+  ics           String?      @db.Text
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime     @default(now())
+  lastError     String?      @db.Text
+  createdAt     DateTime     @default(now())
+  sentAt        DateTime?
+
+  @@index([status, nextAttemptAt])
+}
+
+model Counter {
+  key   String @id
+  value Int
+}
+
+// Settings shared by every backend replica. Today: the approval matrix ("approvers"), as YAML text.
+model Setting {
+  id        String   @id
+  value     String   @db.MediumText
+  updatedAt DateTime @updatedAt
+}

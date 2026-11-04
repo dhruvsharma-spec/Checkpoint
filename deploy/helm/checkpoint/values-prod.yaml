@@ -1,0 +1,19 @@
+# Production: namespace devx-prod.
+webUrl: https://checkpoint.example.com
+backend:
+  replicas: 2
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 8, cpu: 70 }
+frontend:
+  replicas: 2
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, cpu: 70 }
+ingress:
+  host: checkpoint.example.com
+mysql:
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits: { memory: 3Gi }
+  bufferPoolSize: 1G
+  storage: { size: 50Gi, iops: "3000", throughput: "125" }
+backup:
+  schedule: "30 */6 * * *"     # every 6 hours
+  bucket: ""

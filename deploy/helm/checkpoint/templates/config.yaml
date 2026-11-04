@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cp.name" . }}-config
+  labels: {{- include "cp.labels" . | nindent 4 }}
+data:
+  # Production mode: no dev sign-in, Secure cookies, Google sign-in only.
+  APP_ENV: production
+  WEB_URL: {{ .Values.webUrl | quote }}
+  ALLOWED_EMAIL_DOMAINS: {{ .Values.app.allowedEmailDomains | quote }}
+  BOOTSTRAP_ADMINS: {{ .Values.app.bootstrapAdmins | quote }}
+  ENABLED_CCB_TYPES: {{ .Values.app.enabledCcbTypes | quote }}
+  SESSION_HOURS: {{ .Values.app.sessionHours | quote }}
+  SEED_SAMPLES: {{ .Values.app.seedSamples | quote }}
+  COOKIE_SECURE: "true"
+  SMTP_HOST: {{ .Values.app.smtp.host | quote }}
+  SMTP_PORT: {{ .Values.app.smtp.port | quote }}
+  SMTP_TLS: {{ .Values.app.smtp.tls | quote }}
+  MAIL_FROM: {{ .Values.app.mailFrom | quote }}
+  APPROVERS_FILE: /seed/approvers.yaml
+  USERS_FILE: /seed/users.yaml
+  INVENTORY_DIR: /inventory
+---
+# Starting copies only. The approval matrix and the users are copied into the database the first time; after that the
+# UI is where they change. scripts/eks.sh copies these files in from deploy/k8s before every deploy.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cp.name" . }}-seed
+  labels: {{- include "cp.labels" . | nindent 4 }}
+data:
+  approvers.yaml: {{ .Files.Get "files/approvers.yaml" | quote }}
+  users.yaml: {{ .Files.Get "files/users.yaml" | quote }}
+---
+# The database servers offered on a Database CCB.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cp.name" . }}-inventory
+  labels: {{- include "cp.labels" . | nindent 4 }}
+data:
+  mysql-inventory.yaml: {{ .Files.Get "files/mysql-inventory.yaml" | quote }}
+  mongodb-inventory.yaml: {{ .Files.Get "files/mongodb-inventory.yaml" | quote }}

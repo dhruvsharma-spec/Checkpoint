@@ -1,0 +1,24 @@
+# The approvers list the smoke test runs against: the admin is in every list, with an email, so any pick works.
+approvers:
+  LK Tech:
+    groups:
+      POS: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }, { name: Abhay Urmaliya }]
+      Juno: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      CES: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      SCM/NEXS: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      Puno: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      JJ: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      Analytics: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      Cosmos: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      LK Platform: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+      QMS: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+  LK Platform:
+    owners: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }, { name: Pratiti Basu, email: pratiti.basu@lenskart.com }, { name: Vikram Gaur }, { name: Natraj Choudhury }]
+  Security:
+    owners: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+  QA:
+    owners: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }]
+  DevOps:
+    owners: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }, { name: Pratiti Basu }, { name: Vikram Gaur }]
+  DataOps:
+    owners: [{ name: Dhruv Sharma, email: dhruv.sharma@lenskart.com }, { name: Siddharth Sharma }, { name: Hashneet Kaur }]

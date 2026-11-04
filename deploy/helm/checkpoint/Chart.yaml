@@ -1,0 +1,7 @@
+apiVersion: v2
+name: checkpoint
+description: Checkpoint, the CCB (change control board) approval app. Frontend, API, worker, MySQL with backups.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.29.0-0"

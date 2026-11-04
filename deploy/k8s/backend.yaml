@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkpoint-backend
+  namespace: checkpoint
+spec:
+  selector: { app: checkpoint-backend }
+  ports:
+    - { name: http, port: 4000, targetPort: http }
+---
+# The backend: the API and all the rules. It is the only service that talks to the database
+# (the worker is the other). It has no screens; the frontend forwards every /api request here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkpoint-backend
+  namespace: checkpoint
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: checkpoint-backend }
+  template:
+    metadata:
+      labels: { app: checkpoint-backend }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      initContainers:
+        # 1. Wait until MySQL accepts connections.
+        - name: wait-for-db
+          image: mysql:8.4
+          command: ["sh", "-c", "until mysqladmin ping -h checkpoint-db --silent; do echo waiting for database; sleep 2; done"]
+        # 2. Apply the database migrations (prisma/migrations), then make sure the CCB types exist and the first admin
+        #    is in the list. Safe to run on every start: applied migrations are skipped.
+        - name: schema-sync
+          image: checkpoint-backend:local
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["sh", "-c", "npx prisma migrate deploy && npx tsx prisma/seed.ts"]
+          env:
+            - { name: USERS_FILE, value: /seed-users/users.yaml }
+          volumeMounts:
+            - { name: users-seed, mountPath: /seed-users, readOnly: true }
+          envFrom:
+            - configMapRef: { name: checkpoint-config }
+            - secretRef: { name: checkpoint-secrets }
+      volumes:
+        - name: inventory
+          configMap: { name: checkpoint-inventory }
+        - name: users-seed
+          configMap: { name: checkpoint-users }
+        # Only the starting copy of the approval matrix: the first start copies it into the database.
+        - name: approvers-seed
+          configMap: { name: checkpoint-approvers }
+      containers:
+        - name: api
+          image: checkpoint-backend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 4000 }
+          env:
+            - { name: APPROVERS_FILE, value: /seed/approvers.yaml }
+            - { name: INVENTORY_DIR, value: /inventory }
+          volumeMounts:
+            - { name: approvers-seed, mountPath: /seed, readOnly: true }
+            - { name: inventory, mountPath: /inventory, readOnly: true }
+          envFrom:
+            - configMapRef: { name: checkpoint-config }
+            - secretRef: { name: checkpoint-secrets }
+            # Optional: created by "scripts/minikube.sh google". Holds GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
+            - secretRef: { name: checkpoint-google, optional: true }
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /api/health, port: http }
+            initialDelaySeconds: 25
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 100m, memory: 160Mi }
+            limits: { memory: 512Mi }

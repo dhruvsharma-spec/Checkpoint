@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkpoint-frontend
+  namespace: checkpoint
+spec:
+  selector: { app: checkpoint-frontend }
+  ports:
+    - { name: http, port: 3000, targetPort: http }
+---
+# The frontend: the screens only (Next.js). It has no database access and no secrets. Every /api
+# request from the browser is forwarded to the checkpoint-backend service.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkpoint-frontend
+  namespace: checkpoint
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: checkpoint-frontend }
+  template:
+    metadata:
+      labels: { app: checkpoint-frontend }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      containers:
+        - name: web
+          image: checkpoint-frontend:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 3000 }
+          env:
+            - { name: BACKEND_URL, value: "http://checkpoint-backend:4000" }
+          # /healthz does not call the backend, so a backend restart never restarts the screens.
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }

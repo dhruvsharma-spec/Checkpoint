@@ -1,0 +1,35 @@
+# The background worker. Same image as the backend, different command. It sends the emails the app
+# queues in the database (with retries), so a mail outage or a restart never loses a message.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkpoint-worker
+  namespace: checkpoint
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: checkpoint-worker }
+  template:
+    metadata:
+      labels: { app: checkpoint-worker }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+      initContainers:
+        - name: wait-for-db
+          image: mysql:8.4
+          command: ["sh", "-c", "until mysqladmin ping -h checkpoint-db --silent; do echo waiting for database; sleep 2; done"]
+      containers:
+        - name: worker
+          image: checkpoint-backend:local
+          imagePullPolicy: IfNotPresent
+          workingDir: /app
+          command: ["npx", "tsx", "worker/index.ts"]
+          envFrom:
+            - configMapRef: { name: checkpoint-config }
+            - secretRef: { name: checkpoint-secrets }
+            - secretRef: { name: checkpoint-google, optional: true }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 384Mi }

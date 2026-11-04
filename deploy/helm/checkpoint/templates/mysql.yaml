@@ -1,0 +1,148 @@
+{{- $c := dict "root" . "component" "mysql" -}}
+{{- $sc := printf "checkpoint-gp3-%s" .Release.Namespace -}}
+# MySQL 8.4 inside the cluster, on an encrypted gp3 EBS volume. One replica: the volume can only be attached to one
+# node at a time. The volume outlives the pod, the StatefulSet and the claim (reclaimPolicy Retain).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ $sc }}
+  labels: {{- include "cp.labels" . | nindent 4 }}
+provisioner: ebs.csi.aws.com
+reclaimPolicy: Retain
+allowVolumeExpansion: true
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  type: gp3
+  encrypted: "true"
+  iops: {{ .Values.mysql.storage.iops | quote }}
+  throughput: {{ .Values.mysql.storage.throughput | quote }}
+  # AWS Backup selects volumes by these tags (see docs/EKS.md).
+  tagSpecification_1: "app=checkpoint"
+  tagSpecification_2: "env={{ .Release.Namespace }}"
+  tagSpecification_3: "backup=checkpoint-mysql"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "cp.name" . }}-mysql
+  labels: {{- include "cp.labels" . | nindent 4 }}
+data:
+  checkpoint.cnf: |
+    [mysqld]
+    character-set-server = utf8mb4
+    collation-server = utf8mb4_unicode_ci
+    innodb_buffer_pool_size = {{ .Values.mysql.bufferPoolSize }}
+    max_connections = 300
+    # Binary logs for point-in-time recovery between dumps; kept 7 days.
+    log_bin = mysql-bin
+    binlog_expire_logs_seconds = 604800
+    sync_binlog = 1
+    innodb_flush_log_at_trx_commit = 1
+    skip_name_resolve = ON
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "cp.name" . }}-mysql
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  selector: {{- include "cp.selector" $c | nindent 4 }}
+  ports:
+    - { name: mysql, port: 3306, targetPort: mysql }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "cp.name" . }}-mysql
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "cp.name" . }}-mysql
+  replicas: 1
+  persistentVolumeClaimRetentionPolicy: { whenDeleted: Retain, whenScaled: Retain }
+  selector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "cp.selector" $c | nindent 8 }}
+      annotations:
+        # Karpenter must not move the database to consolidate nodes; it moves only on a real node problem.
+        karpenter.sh/do-not-disrupt: "true"
+        checksum/config: {{ .Values.mysql.bufferPoolSize | sha256sum }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 120
+      securityContext: { runAsUser: 999, runAsGroup: 999, fsGroup: 999, runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: mysql
+          image: {{ .Values.mysql.image }}
+          ports:
+            - { name: mysql, containerPort: 3306 }
+          env:
+            - { name: MYSQL_DATABASE, value: checkpoint }
+            - { name: MYSQL_USER, value: checkpoint }
+            - name: MYSQL_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.existingSecret }}, key: MYSQL_PASSWORD } }
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ .Values.existingSecret }}, key: MYSQL_ROOT_PASSWORD } }
+          startupProbe:
+            exec: { command: ["sh", "-c", "mysqladmin ping -uroot -p\"$MYSQL_ROOT_PASSWORD\" --silent"] }
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            exec: { command: ["sh", "-c", "mysql -ucheckpoint -p\"$MYSQL_PASSWORD\" -e 'select 1' checkpoint >/dev/null"] }
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec: { command: ["sh", "-c", "mysqladmin ping -uroot -p\"$MYSQL_ROOT_PASSWORD\" --silent"] }
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext: {{- include "cp.containerSecurity" . | nindent 12 }}
+          resources: {{- toYaml .Values.mysql.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/mysql }
+            - { name: config, mountPath: /etc/mysql/conf.d, readOnly: true }
+            - { name: run, mountPath: /var/run/mysqld }
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - name: config
+          configMap: { name: {{ include "cp.name" . }}-mysql }
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: {{ $sc }}
+        resources:
+          requests: { storage: {{ .Values.mysql.storage.size }} }
+---
+# Only the app's own pods (and the backup job) may reach the database. Enforced when network policies are switched on
+# in the VPC CNI (enableNetworkPolicy); harmless otherwise.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "cp.name" . }}-mysql
+  labels: {{- include "cp.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels: {{- include "cp.selector" $c | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchExpressions:
+              - { key: app.kubernetes.io/instance, operator: In, values: [{{ .Release.Name }}] }
+              - { key: app.kubernetes.io/component, operator: In, values: [backend, worker, backup] }
+      ports:
+        - { port: 3306, protocol: TCP }

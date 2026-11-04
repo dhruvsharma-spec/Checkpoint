@@ -1,0 +1,29 @@
+# Non-secret settings for the app and worker. Edit BOOTSTRAP_ADMINS before the first start.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: checkpoint-config
+  namespace: checkpoint
+data:
+  # local = dev sign-in buttons and plain-http cookies. Never use "local" for a real deployment.
+  APP_ENV: "local"
+  # The address you open in the browser (via port-forward). Google redirects back here.
+  WEB_URL: "http://localhost:3000"
+  ALLOWED_EMAIL_DOMAINS: "lenskart.com,lenskart.in"
+  # Comma-separated. These emails become Admin the first time they sign in.
+  BOOTSTRAP_ADMINS: "dhruv.sharma@lenskart.com"
+  DEV_LOGIN: "true"
+  # Which kinds of CCB can be filed. General only for now. Add more keys, comma-separated (for example "general,database"),
+  # or "all". CCBs of other kinds that already exist stay visible.
+  ENABLED_CCB_TYPES: "general"
+  COOKIE_SECURE: "false"
+  SESSION_HOURS: "8"
+  # Loads a dozen varied sample CCBs once, so the screens have something to show. Set to "false" for none.
+  SEED_SAMPLES: "true"
+  # Mail. Locally everything goes to the Mailpit catcher. For production switch these to the SES
+  # SMTP endpoint (email-smtp.<region>.amazonaws.com, port 587, SMTP_TLS "true") and put the SMTP
+  # credentials in the secret as SMTP_USER and SMTP_PASS.
+  SMTP_HOST: "checkpoint-mail"
+  SMTP_PORT: "1025"
+  SMTP_TLS: "false"
+  MAIL_FROM: "Checkpoint <checkpoint@lenskart.com>"

@@ -1,0 +1,146 @@
+# MYSQL SERVERS
+#
+# Used by the Database CCB: when MySQL is chosen, the form offers these servers in a drop-down, first by
+# type (role) and then by IP. A person can also type an IP that is not listed.
+# role is the classifier and must be one of: Master, Slave, Proxy, Standalone, Other
+# Every field except ip and role is optional and only shown as a hint next to the IP.
+# To change it: edit this file, then run ./scripts/minikube.sh apply
+# Built from the "MySQL inventory" sheet; servers marked "not db server" in the sheet are left out.
+
+groups:
+  - name: "SCM/WEB CORE"
+    servers:
+      - { ip: "172.31.33.12", role: "Proxy", dns: "PROXYSQL 1" }
+      - { ip: "172.31.33.16", role: "Proxy", dns: "PROXYSQL 2" }
+      - { ip: "172.31.14.158", role: "Master", label: "Master 1", dns: "mysql-web-master-rw.prod.internal", instance: "SCM-mysql-rw-for-juno", version: "5.7.28", slave_of: "slave of MASTER 2", app_owner: "web core juno", poc: "Gyan Prabhat" }
+      - { ip: "172.31.6.164", role: "Slave", label: "Slave 1", instance: "SCM-mysql-rw-for-juno-1", slave_of: "slave 1 of MASTER 1", app_owner: "web core juno", poc: "Kirti Jadav" }
+      - { ip: "172.31.6.188", role: "Slave", label: "Slave 2", dns: "dev-read-webmaster-db.prod.internal", instance: "SCM-mysql-rw-for-juno-2", slave_of: "slave 2 of Master 1", app_owner: "web core juno", poc: "Ram Pravesh" }
+      - { ip: "10.175.0.106", role: "Slave", label: "slave 3", instance: "web_server", app_owner: "analytics" }
+      - { ip: "172.31.7.94", role: "Master", label: "MASTER 2", dns: "mysql-scm-rw.prod.internal / mysql-pos-inventory-master-rw.prod.internal", instance: "inventory-mysql-03.ap.lenskartprod.interna", slave_of: "Slave of Master 2", app_owner: "scm" }
+      - { ip: "172.31.33.36", role: "Slave", label: "Slave 4", dns: "unireports-scm-upgrade-read.prod.internal", instance: "db-unireport-slave-prod", slave_of: "Slave of Master 2", app_owner: "scm", poc: "Abhay Urmaliya" }
+      - { ip: "172.31.33.38", role: "Slave", label: "Slave 5", dns: "mysql-pos-inventory-slave-upgrade-ro.prod.internal", instance: "db-scm-read-slave-prod", slave_of: "Slave of Master2", app_owner: "scm" }
+      - { ip: "172.31.33.186", role: "Slave", label: "Slave 6", instance: "db-scm-read-slave-prod-new", slave_of: "Slave of Master 2", app_owner: "scm" }
+      - { ip: "172.31.40.29", role: "Slave", label: "Slave 7", instance: "scm-read-04", slave_of: "Slave of Master 2", app_owner: "scm" }
+      - { ip: "172.31.42.192", role: "Slave", label: "Slave 8/Unireports Master", dns: "unireports-master.prod.internal/ hto-master.prod.internal", instance: "prod_unireport_db_upgraded", slave_of: "Slave of Master 2/Unireports Master", app_owner: "SCM Unireports", poc: "Abhay Urmaliya" }
+      - { ip: "172.31.33.132", role: "Slave", label: "Slave 9", dns: "unireports-scm-read.prod.internal", instance: "prod_unireport_db_upgrade (BACKUP)", slave_of: "Slave of Unireports (172.31.42.192)", app_owner: "SCM unireports", poc: "@Abhay Urmaliya @Neeraj Kumar" }
+      - { ip: "172.31.33.118", role: "Slave", label: "Slave 10", dns: "puno-db.prod.internal", instance: "puno-db-prod-dr", slave_of: "Slave of Unireports (172.31.42.192)", app_owner: "SCM unireports" }
+      - { ip: "172.31.33.138", role: "Slave", label: "Slave 11", dns: "mariadb-read-all.prod.internal/mysql-upgrade-01.prod.internal", instance: "mysql_dev_read_new-01", slave_of: "Slave of Unireports (172.31.42.192)", app_owner: "SCM unireports" }
+      - { ip: "172.31.41.26", role: "Other" }
+      - { ip: "10.85.0.38", role: "Slave", label: "Slave 12", instance: "MySQLDEV-Read01", slave_of: "Slave of Unireports (172.31.42.192)", app_owner: "SCM unireports" }
+      - { ip: "10.175.0.32", role: "Slave", label: "Slave 13", instance: "mysql-06", slave_of: "Slave of Unireports (172.31.42.192)", app_owner: "analytics" }
+      - { ip: "10.175.1.98", role: "Slave", label: "Slave 14", instance: "analytics-mysql-03", slave_of: "Slave of Unireports (172.31.42.192)", app_owner: "analytics" }
+      - { ip: "172.31.33.176", role: "Slave", label: "Slave 15", dns: "finance-team.ap.lenskartprod.internal", instance: "finance mysql analytics server", slave_of: "Slave of 10.175.1.98", app_owner: "Finance" }
+      - { ip: "10.175.1.141", role: "Slave", label: "Slave 16", instance: "Maria DB 127_backup", slave_of: "Slave of 10.175.1.98" }
+      - { ip: "10.175.0.80", role: "Slave", label: "Slave 17", instance: "analytics-ceincentive-mysql-master", slave_of: "Slave of Unireports (172.31.42.192)" }
+  - name: "NEXS CORE"
+    servers:
+      - { ip: "172.31.33.26", role: "Proxy", dns: "nexs_proxy_mysql_db_prod-01" }
+      - { ip: "172.31.33.130", role: "Master", label: "Master", dns: "nexs-db-master.prod.internal", instance: "nexs-db-0-prod", version: "5.7.42", poc: "Gyan Prabhat" }
+      - { ip: "172.31.33.188", role: "Slave", label: "Slave-1", dns: "nexs_ims_prod_slave.prod.internal", instance: "nexs", version: "5.7.42", poc: "Kirti Jadav" }
+      - { ip: "172.31.40.225", role: "Slave", label: "Slave-2", dns: "nexs-prod-slave03.prod.internal", instance: "nexs-standby", version: "5.7.42", poc: "Ram Pravesh" }
+      - { ip: "172.31.33.29", role: "Slave", label: "Slave-3", dns: "nexs-slave01.prod.internal", instance: "nexs-db-2-prod", version: "5.7.44", slave_of: "10.10,146.189 (No SSH) (GCP)", poc: "vivek pratap singh" }
+      - { ip: "172.31.33.45", role: "Slave", label: "Slave-4", dns: "nexs-slave02.prod.internal", instance: "nexs-db-03-prod", version: "5.7.44", slave_of: "master of 172.31.43.60 (5.7.44)" }
+      - { ip: "172.31.43.60", role: "Slave", label: "Slave of 172.31.33.45", instance: "prod-wms-db-sepration-01", slave_of: "172.31.33.45", app_owner: "wms prod seperation" }
+      - { ip: "10.85.0.147", role: "Slave", label: "Slave-5", dns: "nexs-slave-mumbai-01.prod.internal", instance: "nexs-db-0-lkprod backup", version: "5.7.42" }
+      - { ip: "10.175.0.138", role: "Slave", label: "Slave-6", instance: "wms_replica", app_owner: "analytics" }
+      - { ip: "10.175.0.185", role: "Slave", label: "Slave-7", instance: "nexs_fix", version: "5.7.42" }
+      - { ip: "172.31.33.122", role: "Standalone", label: "archival data/ standalone", dns: "Nexs archival server", version: "8.0.43" }
+      - { ip: "172.31.41.116", role: "Standalone", label: "standalone", dns: "Nexs archival server", version: "8.0.43" }
+  - name: "HISTORY DB"
+    servers:
+      - { ip: "172.31.40.215", role: "Master", label: "Master", dns: "historydb_new_master.prod.internal", instance: "history-db-prod-01 (backup)", version: "8.0.33", poc: "Pawan Gogia" }
+      - { ip: "10.175.1.90", role: "Slave", label: "Slave-1", instance: "analytics-pii", version: "8.0.33", slave_of: "Replication Broken" }
+      - { ip: "10.175.0.11", role: "Slave", label: "Slave-2", instance: "history-db-analytics-slave", version: "8.0.33", slave_of: "Replication is running (Analytics slave)" }
+      - { ip: "10.175.1.198", role: "Slave", label: "Slave-3", instance: "analytics-nps-02", slave_of: "Replication Broken" }
+  - name: "NEXS PICKING DB"
+    servers:
+      - { ip: "172.31.40.50", role: "Master", label: "Master", dns: "nexs-picking-db-master.prod.internal", instance: "nexs-picking-mysql-prod-new", version: "5.7.44", app_owner: "nexs picking", poc: "Nijesh Prakash" }
+      - { ip: "172.31.41.127", role: "Slave", label: "Slave-1", dns: "nexs-picking-db-slave01.prod.internal", instance: "nexs-picking-mysql-slavedb", version: "5.7.44", slave_of: "10.10.146.189 (No SSH) (EKS server)", app_owner: "nexs picking" }
+      - { ip: "172.31.42.223", role: "Slave", label: "Slave-2", dns: "nexs-picking-db-slave2.prod.internal", instance: "nexs-picking-slave-2 (backup)", version: "5.7.44", app_owner: "nexs picking" }
+      - { ip: "172.31.42.233", role: "Slave", label: "Slave-3", instance: "analytics-picking-mysql-prod-new", version: "5.7.44", app_owner: "analytics" }
+  - name: "QMS APP"
+    servers:
+      - { ip: "172.31.40.4", role: "Master", label: "Master", dns: "qms-app.prod.internal", instance: "Storepanel_upgrade_qms_db", version: "5.7.42", poc: "Vikesh Kumar Singh" }
+      - { ip: "172.31.41.51", role: "Slave", label: "Slave-1", dns: "qms-dev-read.prod.internal", instance: "qms-slave-02 (backup)", version: "5.7.43", slave_of: "check the replication table status here" }
+      - { ip: "172.31.5.40", role: "Slave", label: "Slave-2", dns: "qms-slavedb.prod.internal", instance: "qms-slave-01", version: "5.7.41" }
+      - { ip: "10.175.0.29", role: "Slave", label: "Slave-3", version: "5.7.35" }
+  - name: "SCM Separate"
+    servers:
+      - { ip: "172.31.40.68", role: "Master", label: "Master", dns: "scm-new-separate.prod.internal", instance: "refunddb", version: "5.7.39", poc: "Mukesh Manchandana/Harish Kumar" }
+      - { ip: "172.31.41.15", role: "Slave", label: "Slave-1", dns: "scm-new-separate-slave.prod.internal", instance: "refunddb-01-slave backup slave", version: "5.7.44", slave_of: "10.15.230.169 (No SSH)", poc: "jitendar Yadav" }
+      - { ip: "10.175.0.231", role: "Slave", label: "Slave-2", version: "5.7.39" }
+  - name: "FINANCE DB"
+    servers:
+      - { ip: "172.31.3.143", role: "Master", label: "Master", dns: "mysql-financedb-master.prod.internal", instance: "finance-db", version: "8.0.41", poc: "Neeraj Kumar" }
+  - name: "AQUALENS"
+    servers:
+      - { ip: "172.31.33.217", role: "Master", label: "Master", dns: "aqualensff.prod.internal", instance: "Aqualens_Database", version: "5.7.34", poc: "Mukesh Manchanda/Manikanta" }
+      - { ip: "172.31.33.133", role: "Slave", label: "Slave-1", dns: "putway-db-0.prod.internal", instance: "SCM_Putaway_DB", version: "5.7.44", slave_of: "10.175.1.187", poc: "Manikanta" }
+      - { ip: "10.175.1.187", role: "Other", app_owner: "analytics" }
+      - { ip: "172.31.33.183", role: "Other", instance: "no ssh through mafiree" }
+  - name: "SUBSCRIBER DB"
+    servers:
+      - { ip: "172.31.33.208", role: "Master", label: "Master", dns: "subscriber-masterdb.prod.internal", instance: "aqualens-mysql", version: "10.3.27-MariaDB", app_owner: "Aqualens  (Manikanta)", poc: "Manikanta" }
+      - { ip: "10.120.0.217", role: "Slave", label: "Slave-1", version: "GCP NEED TO CHECK FURTHER", app_owner: "Aqualens (Manikanta)", poc: "Mukesh Manchanda/Manikanta" }
+  - name: "AUDIT SINGAPORE"
+    servers:
+      - { ip: "172.31.42.233", role: "Master", label: "Master", dns: "audit-singapore.prod.internal", instance: "mysql-audit-db-prod", version: "5.7.37" }
+      - { ip: "10.175.0.208", role: "Slave", label: "Slave-1" }
+  - name: "NPS MASTER"
+    servers:
+      - { ip: "10.85.0.11", role: "Proxy", label: "ON MASTER ADDED", dns: "PROXYSQL" }
+      - { ip: "172.31.40.100", role: "Proxy", label: "ON MASTER ADDED", dns: "nps-proxysql-01-prod" }
+      - { ip: "10.85.0.85", role: "Master", label: "Master", dns: "nps-master-db-mumbai.prod.internal", instance: "nps-db-prod-5thfeb2024-02", version: "8.0.33", poc: "Jitender Yadav/Pawan Gogia" }
+      - { ip: "10.85.1.182", role: "Slave", label: "Slave-1", dns: "nps-slave2-db.prod.internal", instance: "nps-db-prod-5thfeb2024-02", version: "8.0.33", poc: "Gokul Ramesh" }
+      - { ip: "10.113.108.85", role: "Slave", label: "Slave (DR server)" }
+      - { ip: "10.85.0.47", role: "Slave", label: "Slave-2 (backup server)", dns: "nps-archival-db.prod.internal", instance: "nps-db-prod-slave-01", version: "8.0.43" }
+      - { ip: "10.175.0.76", role: "Slave", label: "Slave-3", version: "8.0.33" }
+  - name: "PREPROD"
+    servers:
+      - { ip: "172.31.14.165", role: "Master", label: "Master-1", dns: "mysql-pos-webservice.preprod.internal", instance: "mysql-preprod-scm", version: "5.5.37" }
+      - { ip: "172.31.33.197", role: "Master", label: "Master-2", instance: "mysql-proxy-preprod", version: "5.5.37" }
+  - name: "LK ACADEMY"
+    servers:
+      - { ip: "10.85.0.65", role: "Master", label: "Master", dns: "lk-academy-prod.prod.internal", instance: "mysql-lk-academy", version: "8.0.33", poc: "@Saurabh Tripathi" }
+  - name: "NEXS PREPROD"
+    servers:
+      - { ip: "172.31.43.251", role: "Master", label: "Master", dns: "nexs-mysql.preprod.internal", instance: "nexs-preprod-db", version: "5.7.44" }
+  - name: "Archiver Server"
+    servers:
+      - { ip: "172.31.5.34", role: "Master", label: "Master", instance: "mysql-slave-archive-new" }
+      - { ip: "10.175.1.52", role: "Other", slave_of: "slave of 172.31.5.34" }
+  - name: "PreProd Servers"
+    servers:
+      - { ip: "172.31.43.251", role: "Master", label: "Master", dns: "nexs-mysql.preprod.internal", instance: "nexs-preprod-db" }
+      - { ip: "172.31.14.165", role: "Master", label: "master", dns: "mysql-pos-webservice.preprod.internal", instance: "mysql-preprod-scm", slave_of: "slave of 172.31.33.197 (/usr/local/mysql/bin/mysql -uroot -p)" }
+      - { ip: "172.31.33.197", role: "Master", label: "master", instance: "mysql-proxy-preprod", slave_of: "slave of 172.31.14.165. (/usr/local/mysql/bin/mysql -uroot -p)" }
+      - { ip: "172.31.33.13", role: "Other", instance: "nps-mysql-db-preprod-01" }
+      - { ip: "172.31.33.190", role: "Other", dns: "AQUALENS PRE PROD", instance: "Aqualens B2B Pre-Prod" }
+      - { ip: "172.31.33.5", role: "Other", dns: "SUBSCRIBER PRE PROD", instance: "Aqualens B2C pre-prod" }
+      - { ip: "172.31.33.254", role: "Master", label: "Master", dns: "LK Vision Care Preprod", instance: "lk-vision-care-mysql-db-ec2" }
+      - { ip: "172.31.33.145", role: "Proxy", dns: "nps-proxy-mysql-db-preprod-03" }
+      - { ip: "172.31.41.255", role: "Other", dns: "postgres-db-preprod" }
+      - { ip: "10.176.90.243", role: "Other", instance: "lk-watcher-scm-preprod-db" }
+  - name: "Investor Tool"
+    servers:
+      - { ip: "172.31.33.71", role: "Master", label: "Master", version: "8.0.46", poc: "Keshav" }
+      - { ip: "172.31.33.52", role: "Slave", label: "Slave" }
+  - name: "LK Vision Care"
+    servers:
+      - { ip: "10.85.1.215", role: "Master", label: "Master", version: "8.0.46", poc: "Keshav Kothari" }
+      - { ip: "10.85.1.224", role: "Slave", label: "Slave", version: "8.0.46", poc: "Vivek Jha" }
+      - { ip: "10.85.1.47", role: "Slave", label: "Backup Slave", version: "8.0.46" }
+  - name: "FLASH DB"
+    servers:
+      - { ip: "172.31.8.203", role: "Standalone", label: "Standalone", version: "8.0.25" }
+  - name: "Lensometer"
+    servers:
+      - { ip: "172.31.41.212", role: "Master", label: "Master", dns: "lensometer-db.prod.internal" }
+  - name: "LK Watcher"
+    servers:
+      - { ip: "172.31.33.249", role: "Master", label: "Master", version: "8.4.11" }
+      - { ip: "172.31.33.119", role: "Slave", label: "Slave", version: "8.4.11" }
+  - name: "check server"
+    servers:
+      - { ip: "172.31.42.2", role: "Other", label: "check access", dns: "stores db preprod" }
+      - { ip: "10.85.0.236", role: "Slave", label: "nexs-db-slave", dns: "standalone maybe preprod or archival", instance: "have access" }

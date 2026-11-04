@@ -1,0 +1,88 @@
+# Defaults shared by every environment. values-stg.yaml and values-prod.yaml change only what differs.
+# Deploy with ./scripts/eks.sh (it sets image.registry and image.tag, and copies the seed files into files/).
+
+image:
+  registry: ""                 # 964059510816.dkr.ecr.ap-south-1.amazonaws.com (set by scripts/eks.sh)
+  backend: checkpoint-backend
+  frontend: checkpoint-frontend
+  tag: ""                      # set by scripts/eks.sh, for example 20261104-1530
+  pullPolicy: IfNotPresent
+
+# The address people open in the browser. Emails link here and Google redirects back here.
+webUrl: https://checkpoint.example.com
+
+app:
+  allowedEmailDomains: "lenskart.com,lenskart.in"
+  bootstrapAdmins: "dhruv.sharma@lenskart.com"
+  enabledCcbTypes: "general"
+  sessionHours: "8"
+  seedSamples: "false"
+  mailFrom: "Checkpoint <checkpoint@lenskart.com>"
+  smtp:
+    host: email-smtp.ap-south-1.amazonaws.com   # Amazon SES, SMTP interface
+    port: "587"
+    tls: "true"
+
+# Secrets are never in this chart. Create them first (./scripts/eks.sh secrets <env>). Keys used:
+#   DATABASE_URL, MYSQL_PASSWORD, MYSQL_ROOT_PASSWORD, SESSION_SECRET,
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SMTP_USER, SMTP_PASS
+existingSecret: checkpoint-secrets
+
+# Where the pods run. With Karpenter, point this at the NodePool in deploy/karpenter (karpenter.sh/nodepool: devx).
+nodeSelector: {}
+tolerations: []
+
+backend:
+  replicas: 2
+  resources:
+    requests: { cpu: 200m, memory: 256Mi }
+    limits: { memory: 768Mi }
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, cpu: 70 }
+
+worker:
+  replicas: 1                  # several are safe (each claims different emails); one is plenty
+  resources:
+    requests: { cpu: 50m, memory: 160Mi }
+    limits: { memory: 512Mi }
+
+frontend:
+  replicas: 2
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  autoscaling: { enabled: true, minReplicas: 2, maxReplicas: 6, cpu: 70 }
+
+ingress:
+  enabled: true
+  className: alb               # AWS Load Balancer Controller
+  host: checkpoint.example.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    # alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-1:964059510816:certificate/...
+    # alb.ingress.kubernetes.io/group.name: devx
+
+mysql:
+  image: mysql:8.4
+  resources:
+    requests: { cpu: 250m, memory: 1Gi }
+    limits: { memory: 2Gi }
+  bufferPoolSize: 512M
+  storage:
+    size: 20Gi
+    # The chart creates an encrypted gp3 StorageClass that keeps the volume when the claim is deleted.
+    # Its volumes are tagged so an AWS Backup plan can snapshot them (see docs/EKS.md).
+    iops: "3000"
+    throughput: "125"
+
+backup:
+  enabled: true
+  schedule: "30 20 * * *"      # 02:00 IST every day (the schedule is in UTC)
+  bucket: ""                   # an S3 bucket in ap-south-1, for example lk-devx-checkpoint-backups
+  prefix: checkpoint
+  # The backup job's ServiceAccount. Give it S3 write access with EKS Pod Identity (see docs/EKS.md).
+  serviceAccount: checkpoint-backup
+  keepJobs: 3
