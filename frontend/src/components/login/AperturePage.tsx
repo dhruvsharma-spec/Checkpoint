@@ -79,8 +79,10 @@ export function AperturePage({ flow }: { flow: Flow }) {
           ) : (
             <>
               <h1>Sign in</h1>
-              <p className="lgA-sub">Use your Lenskart Google account.</p>
-              <button type="button" className="lgA-g" onClick={flow.google}><GoogleMark />Continue with Google</button>
+              <p className="lgA-sub">Use your Lenskart account.</p>
+              {/* The company IdP comes first when it exists: it is the account everyone already has. */}
+              {flow.cfg?.oidc?.enabled && <button type="button" className="lgA-g" onClick={flow.oidc}><BrandMark size={20} id="oidc" />Continue with {flow.cfg.oidc.label}</button>}
+              {flow.cfg?.google && <button type="button" className="lgA-g" onClick={flow.google}><GoogleMark />Continue with Google</button>}
               <ErrorNote flow={flow} />
               <p className="lgA-note">Access is limited to {flow.domains} accounts.</p>
               <DevLogin flow={flow} />

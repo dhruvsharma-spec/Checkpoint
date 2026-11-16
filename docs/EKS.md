@@ -125,8 +125,49 @@ so a tag always means the same build.
 3. Give the client ID and secret to `./scripts/eks.sh secrets <env>` (or patch them into `checkpoint-secrets` later and
    restart the backend: `kubectl -n devx-stg rollout restart deploy/checkpoint-backend`).
 
-The app also checks the email domain (`lenskart.com`, `lenskart.in`) and that Google verified the email. The first
-sign-in creates the person as a Member. `BOOTSTRAP_ADMINS` (in the values) become Admin.
+The app also checks the email domain (`lenskart.com`, `lenskart.in`) and that Google verified the email.
+
+**Until the OAuth client exists, staging signs in with a developer button.** `values-stg.yaml` sets `app.env: local` and
+`devLogin: "true"`, so the login page shows a small "Local development only" button that accepts any allowed-domain
+address. Cookies stay Secure. Remove those two lines and redeploy when the client is in place; the defaults are
+production. The chart refuses `app.env: local` in any namespace whose name contains "prod", so this cannot reach
+`devx-prod` by accident. The first sign-in creates the person as a Member. `BOOTSTRAP_ADMINS` (in the values) become
+Admin.
+
+Because that button is a real bypass, staging is only reachable through Cloudflare: an Access policy (email
+verification for the team) sits in front of `https://checkpoint.preprod.lenskart.com`, and the ALB's `inbound-cidrs` allow
+only Cloudflare's IPv4 ranges, so the ALB's own DNS name is not a way around it. Two consequences when debugging: an
+ALB that suddenly returns no response is often a stale Cloudflare range list, and direct access with `curl` has to go
+through `kubectl port-forward`, not the ALB.
+
+## 4a. Sign-in through the company IdP (OpenID Connect)
+
+Lenskart's IdP is not Google, so sign-in goes through a standard OIDC client. The code reads the provider's discovery
+document, so nothing has to change when the provider does.
+
+**What the app needs**, set in `values-<env>.yaml` and the cluster secret:
+
+| Setting | Where | Example |
+|---|---|---|
+| `app.oidc.issuer` | values | staging: `https://idp.lenskart.com` |
+| `app.oidc.discoveryUrl` | values, only if the document is not at `<issuer>/.well-known/openid-configuration` | |
+| `app.oidc.emailClaim` | values, if the address is not in `email` (often `preferred_username`) | |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | secret | `kubectl -n devx-stg patch secret checkpoint-secrets -p '{"stringData":{"OIDC_CLIENT_ID":"...","OIDC_CLIENT_SECRET":"..."}}'` |
+
+**What the IdP side needs**: a confidential client using the authorization-code flow (PKCE is sent; set
+`app.oidc.pkce: "false"` if the provider rejects it), with this redirect URI registered per environment:
+
+```
+https://<host>/api/auth/oidc/callback
+```
+
+**The claim `email_verified`.** Many in-house providers do not send it. Checkpoint refuses only an explicit
+`email_verified: false`, which is what `app.oidc.requireVerified: "true"` means. The company domain check
+(`ALLOWED_EMAIL_DOMAINS`) applies to this path exactly as it does to Google.
+
+**Turning it on**: put the issuer in the values, patch the secret, redeploy. The login page shows the button as soon as
+`OIDC_ISSUER`, `OIDC_CLIENT_ID` and `OIDC_CLIENT_SECRET` are all present, and the Google button only if the Google
+credentials are set. With both set, both buttons appear; staging's developer button stays behind Cloudflare Access.
 
 ## 5. Backups
 
@@ -156,8 +197,13 @@ and you can copy them to a second region if you want.
 ```bash
 aws backup create-backup-vault --backup-vault-name checkpoint
 aws backup create-backup-plan --backup-plan '{"BackupPlanName":"checkpoint-mysql","Rules":[{"RuleName":"daily","TargetBackupVaultName":"checkpoint","ScheduleExpression":"cron(0 21 * * ? *)","Lifecycle":{"DeleteAfterDays":35}}]}'
-aws backup create-backup-selection --backup-plan-id <plan id> --backup-selection '{"SelectionName":"checkpoint-volumes","IamRoleArn":"arn:aws:iam::964059510816:role/service-role/AWSBackupDefaultServiceRole","ListOfTags":[{"ConditionType":"STRINGEQUALS","ConditionKey":"backup","ConditionValue":"checkpoint-mysql"}]}'
+aws backup create-backup-selection --backup-plan-id <plan id> --backup-selection '{"SelectionName":"checkpoint-volumes","IamRoleArn":"arn:aws:iam::964059510816:role/AWSBackupDefaultServiceRole","ListOfTags":[{"ConditionType":"STRINGEQUALS","ConditionKey":"backup","ConditionValue":"checkpoint-mysql"}]}'
 ```
+
+Use the ARN from `aws iam get-role --role-name AWSBackupDefaultServiceRole --query Role.Arn --output text`. A
+role created in the console lives under `role/service-role/`, one created with `aws iam create-role` under `role/`;
+the selection only accepts the exact ARN. Add `{"ConditionKey":"env","ConditionValue":"devx-stg"}` (or `devx-prod`)
+to the tag list to keep each environment's plan to its own volume.
 
 **Restore from a dump** (tested on staging first, every quarter):
 

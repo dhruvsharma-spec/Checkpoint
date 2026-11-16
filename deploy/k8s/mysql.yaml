@@ -34,10 +34,21 @@ spec:
     spec:
       terminationGracePeriodSeconds: 60
       securityContext: { fsGroup: 999 }
+      initContainers:
+        # MySQL refuses to start unless its data directory is empty. The volume's root can hold files that are not
+        # MySQL's: lost+found on a freshly formatted EBS volume, or leftovers from an earlier deployment on minikube.
+        # So the database lives in a sub-folder, which this step creates and hands to the mysql user.
+        - name: datadir
+          image: mysql:8.4
+          command: ["sh", "-c", "mkdir -p /var/lib/mysql/data"]
+          securityContext: { runAsNonRoot: true, runAsUser: 999, allowPrivilegeEscalation: false }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/mysql }
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
       containers:
         - name: mysql
           image: mysql:8.4
-          args: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
+          args: ["--datadir=/var/lib/mysql/data", "--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
           ports:
             - { name: mysql, containerPort: 3306 }
           env:

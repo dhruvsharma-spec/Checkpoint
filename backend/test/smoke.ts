@@ -13,7 +13,7 @@ class Client {
     const r = await fetch(API + '/api' + path, { method, headers: { 'content-type': 'application/json', ...(this.cookie ? { cookie: this.cookie } : {}) }, body: body ? JSON.stringify(body) : undefined, redirect: 'manual' });
     const sc = r.headers.get('set-cookie'); if (sc) this.cookie = sc.split(';')[0];
     let json: any = null; try { json = await r.json(); } catch { /* no body */ }
-    return { status: r.status, json };
+    return { status: r.status, json, location: r.headers.get('location') };
   }
   login(email: string) { return this.req('POST', '/auth/dev-login', { email }); }
 }
@@ -22,6 +22,14 @@ class Client {
   const anon = new Client();
   ok((await anon.req('GET', '/ccbs')).status === 401, 'anonymous requests are rejected');
   ok((await anon.req('GET', '/health')).status === 200, 'health probe is public');
+  const authCfg = await anon.req('GET', '/auth/config');
+  ok(authCfg.json?.oidc?.enabled === false, 'the company IdP sign-in is off until OIDC_ISSUER and a client are configured');
+  const oidcStart = await anon.req('GET', '/auth/oidc');
+  ok(oidcStart.status === 302 && String(oidcStart.location ?? '').includes('error=oidc_not_configured'), 'signing in through the IdP is refused when it is not configured');
+  const denied = await anon.req('GET', '/auth/oidc/callback?error=access_denied&error_description=not%20allowed');
+  ok(denied.status === 302 && /error=oidc_denied&reason=access_denied/.test(String(denied.location ?? '')), 'an error from the IdP is shown on the login page with its reason');
+  const noCode = await anon.req('GET', '/auth/oidc/callback');
+  ok(noCode.status === 302 && String(noCode.location ?? '').includes('error=state'), 'a callback without a code is refused');
 
   const me = new Client(); await me.login(ADMIN);
   const who = await me.req('GET', '/auth/me');
@@ -60,6 +68,10 @@ class Client {
   ok(noWhy.status === 400 && noWhy.json?.missing?.some((m: string) => /not tested/.test(m)), 'not tested in a lower environment needs the reason why');
   ok((await me.req('POST', '/ccbs', body({ service: [] }))).status === 400, 'the service owning team and its approvers are required');
   ok((await me.req('POST', '/ccbs', body({ service: [{ team: 'POS', approvers: ['someone.else@lenskart.com'] }] }))).status === 400, 'only people listed for that team can be picked');
+  const past = await me.req('POST', '/ccbs', body({ windowAt: when(-1), windowEndAt: when(-1, 1) }));
+  ok(past.status === 400 && /past/.test(past.json?.message ?? ''), 'a change window in the past is refused');
+  ok((await me.req('POST', '/ccbs', body({ windowAt: when(0, -1), windowEndAt: when(0, 1) }))).status === 400, 'a window that started an hour ago is refused even though it ends later');
+  ok((await me.req('POST', '/ccbs', body({ windowAt: 'not a date', windowEndAt: when(2, 1) }))).status === 400, 'an unreadable window date is refused');
   ok((await me.req('POST', '/ccbs', body({ service: [{ team: 'Nowhere', approvers: [ADMIN] }] }))).status === 400, 'only listed teams can be picked');
   ok((await me.req('POST', '/ccbs', body({ businessUnit: 'Lenskart India' }))).status === 400, 'only the listed business units are accepted');
 

@@ -71,6 +71,8 @@ spec:
             - secretRef: { name: checkpoint-secrets }
             # Optional: created by "scripts/minikube.sh google". Holds GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.
             - secretRef: { name: checkpoint-google, optional: true }
+            # Optional: created by "scripts/minikube.sh oidc". Holds OIDC_CLIENT_ID and OIDC_CLIENT_SECRET.
+            - secretRef: { name: checkpoint-oidc, optional: true }
           readinessProbe:
             httpGet: { path: /api/health, port: http }
             initialDelaySeconds: 5

@@ -85,6 +85,10 @@ export default function NewCcb() {
   const [env, setEnv] = useState('Production');
   const [owner, setOwner] = useState(user?.email ?? '');
   const d0 = ymd(new Date(Date.now() + 7 * 864e5));
+  // "Now" in IST, refreshed every 30 seconds, so a form left open cannot submit a window that has started meanwhile.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 30_000); return () => clearInterval(i); }, []);
+  const today = ymd(new Date(now)); const nowTime = fromIso(new Date(now).toISOString()).time;
   const [sd, setSd] = useState(d0); const [st, setSt] = useState('23:00');
   const [ed, setEd] = useState(d0); const [et, setEt] = useState('00:00');
   const [risk, setRisk] = useState<Risk | null>(null);
@@ -177,6 +181,7 @@ export default function NewCcb() {
     !EMAIL.test(owner.trim()) && 'Enter the system owner’s email',
     (!toWindowIso(sd, st) || !toWindowIso(ed, et)) && 'Fill in the start and end date and time',
     !!toWindowIso(sd, st) && !!toWindowIso(ed, et) && !(new Date(toWindowIso(ed, et)) > new Date(toWindowIso(sd, st))) && 'The change window must end after it starts',
+    !!toWindowIso(sd, st) && new Date(toWindowIso(sd, st)).getTime() < Math.floor(now / 60_000) * 60_000 && 'The change window cannot start in the past',
     !risk && 'Choose the risk level',
     service.some((r) => !r.team.trim() && !r.other) && 'Choose the team the service belongs to',
     service.some((r) => r.other && r.team.trim().length < 2) && 'Type the team name',
@@ -326,9 +331,9 @@ export default function NewCcb() {
 
         <Section title="When">
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            <div style={{ flex: '1 1 150px' }}><Label id="f-sd">Window starts</Label><input id="f-sd" type="date" className="inp th" value={sd} onChange={(e) => moveStart(e.target.value, st)} /></div>
-            <div style={{ flex: '1 1 110px' }}><Label id="f-st">Time (IST)</Label><input id="f-st" type="time" className="inp th" value={st} onChange={(e) => moveStart(sd, e.target.value)} /></div>
-            <div style={{ flex: '1 1 150px' }}><Label id="f-ed">Window ends</Label><input id="f-ed" type="date" className="inp th" value={ed} onChange={(e) => setEd(e.target.value)} /></div>
+            <div style={{ flex: '1 1 150px' }}><Label id="f-sd">Window starts</Label><input id="f-sd" type="date" min={today} className="inp th" value={sd} onChange={(e) => moveStart(e.target.value, st)} /></div>
+            <div style={{ flex: '1 1 110px' }}><Label id="f-st">Time (IST)</Label><input id="f-st" type="time" min={sd === today ? nowTime : undefined} className="inp th" value={st} onChange={(e) => moveStart(sd, e.target.value)} /></div>
+            <div style={{ flex: '1 1 150px' }}><Label id="f-ed">Window ends</Label><input id="f-ed" type="date" min={sd} className="inp th" value={ed} onChange={(e) => setEd(e.target.value)} /></div>
             <div style={{ flex: '1 1 110px' }}><Label id="f-et">Time (IST)</Label><input id="f-et" type="time" className="inp th" value={et} onChange={(e) => setEt(e.target.value)} /></div>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>

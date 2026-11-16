@@ -17,9 +17,14 @@ data:
   # or "all". CCBs of other kinds that already exist stay visible.
   ENABLED_CCB_TYPES: "general"
   COOKIE_SECURE: "false"
+  # The company IdP (OpenID Connect). The button appears once ./scripts/minikube.sh oidc has stored the client id and
+  # secret. The IdP must have http://localhost:3000/api/auth/oidc/callback registered as a redirect URI.
+  OIDC_ISSUER: "https://idp.lenskart.com"
+  OIDC_LABEL: "Company SSO"
   SESSION_HOURS: "8"
-  # Loads a dozen varied sample CCBs once, so the screens have something to show. Set to "false" for none.
-  SEED_SAMPLES: "true"
+  # "true" loads a dozen varied sample CCBs once, so the screens have something to show. Off by default.
+  # Already loaded? ./scripts/minikube.sh remove-samples
+  SEED_SAMPLES: "false"
   # Mail. Locally everything goes to the Mailpit catcher. For production switch these to the SES
   # SMTP endpoint (email-smtp.<region>.amazonaws.com, port 587, SMTP_TLS "true") and put the SMTP
   # credentials in the secret as SMTP_USER and SMTP_PASS.

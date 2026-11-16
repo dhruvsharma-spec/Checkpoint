@@ -1,12 +1,16 @@
-# Karpenter (v1 API) nodes for the devx namespaces (devx-stg, devx-prod). Cluster-wide objects: applied once, by a
-# cluster admin, not by the Helm chart.
+# Karpenter (v1 API) nodes for the devx namespaces (devx-stg, devx-prod). One cluster-wide object; applied by a
+# cluster admin, not by the Helm chart:
 #   kubectl --context arn:aws:eks:ap-south-1:964059510816:cluster/lk-tech-infra-02-eks apply -f deploy/karpenter/devx-nodepool.yaml
 #
-# Before applying, check the three CHANGE-ME values against the cluster's existing EC2NodeClass:
-#   kubectl --context <eks> get ec2nodeclass -o yaml
-# (the node IAM role, and the discovery tag on the cluster's subnets and security groups).
+# It creates only new objects (an EC2NodeClass and a NodePool, both named devx) and changes nothing that exists.
+# Unlike the cluster's amd64 pool, this one is on-demand only and tainted: Checkpoint runs MySQL, a spot reclaim would
+# take the database with it, and nothing else may be scheduled onto these nodes.
 #
-# The app pods use this pool when the Helm values set:  nodeSelector: { karpenter.sh/nodepool: devx }
+# The MySQL pod is marked karpenter.sh/do-not-disrupt, so Karpenter never moves it to save money or to refresh the node.
+# Expiry therefore does not remove its node either. When a patched AMI is due, replace that node in a maintenance
+# window: take a backup first, then drain the node.
+#
+# The app pods use this pool through the Helm values:  nodeSelector: { karpenter.sh/nodepool: devx }
 # Nodes are added and removed as pods need them (that is the horizontal scaling of the nodes); the HPAs in the chart
 # scale the pods.
 apiVersion: karpenter.k8s.aws/v1
@@ -14,19 +18,26 @@ kind: EC2NodeClass
 metadata:
   name: devx
 spec:
-  role: CHANGE-ME-karpenter-node-role          # the node IAM role used by the cluster's other NodeClass
+  # Copied from the cluster's "default" class (kubectl get ec2nodeclass default -o yaml), except the tags and the
+  # metadata hop limit. The node role, subnets and security groups are shared on purpose: a new node role would have to
+  # be added to the Karpenter controller's iam:PassRole permission, which is a shared policy.
+  role: lk-tech-infra-02-eks-node-role
   amiSelectorTerms:
     - alias: al2023@latest
   subnetSelectorTerms:
-    - tags: { karpenter.sh/discovery: lk-tech-infra-02-eks }   # CHANGE-ME if the subnets use another tag
+    - tags: { karpenter.sh/discovery: lk-tech-infra-02-eks }
   securityGroupSelectorTerms:
-    - tags: { karpenter.sh/discovery: lk-tech-infra-02-eks }   # CHANGE-ME if the security groups use another tag
-  metadataOptions:
-    httpTokens: required                       # IMDSv2 only
-    httpPutResponseHopLimit: 1                 # pods cannot reach the node's instance credentials
+    - tags: { karpenter.sh/discovery: lk-tech-infra-02-eks }
   blockDeviceMappings:
     - deviceName: /dev/xvda
-      ebs: { volumeSize: 40Gi, volumeType: gp3, encrypted: true, deleteOnTermination: true }
+      ebs: { volumeSize: 50Gi, volumeType: gp3, encrypted: true, deleteOnTermination: true }
+  metadataOptions:
+    httpEndpoint: enabled
+    httpProtocolIPv6: disabled
+    httpTokens: required                       # IMDSv2 only
+    httpPutResponseHopLimit: 1                 # pods cannot reach the node's instance credentials (the class this was copied from allows 2)
+  # These show up on every instance, volume and network interface, so Checkpoint's cost is separate in Cost Explorer
+  # (once the tag keys are activated as cost allocation tags in Billing). Add any tags your company requires here.
   tags:
     team: devx
     app: checkpoint
@@ -41,17 +52,21 @@ spec:
       labels: { workload: devx }
     spec:
       nodeClassRef: { group: karpenter.k8s.aws, kind: EC2NodeClass, name: devx }
-      # On-demand only: the database runs here, and spot interruptions would move it.
+      # Keeps every pod that does not tolerate it off these nodes. Only the Checkpoint chart's pods do.
+      taints:
+        - { key: workload, value: devx, effect: NoSchedule }
+      expireAfter: 720h                        # nodes are replaced every 30 days (freshly patched AMIs)
       requirements:
         - { key: karpenter.sh/capacity-type, operator: In, values: [on-demand] }
-        - { key: kubernetes.io/arch, operator: In, values: [amd64, arm64] }
-        - { key: karpenter.k8s.aws/instance-category, operator: In, values: [m, c, r] }
-        - { key: karpenter.k8s.aws/instance-generation, operator: Gt, values: ["5"] }
-        - { key: karpenter.k8s.aws/instance-size, operator: In, values: [large, xlarge, 2xlarge] }
-      expireAfter: 720h                        # nodes are replaced every 30 days (patched AMIs)
+        - { key: kubernetes.io/arch, operator: In, values: [amd64] }
+        - { key: kubernetes.io/os, operator: In, values: [linux] }
+        # The same families the cluster already uses, plus m6i.2xlarge for the production database.
+        - key: node.kubernetes.io/instance-type
+          operator: In
+          values: [t3a.medium, t3a.large, t3a.xlarge, m6i.large, m6i.xlarge, m6i.2xlarge]
   disruption:
     consolidationPolicy: WhenEmptyOrUnderutilized
-    consolidateAfter: 5m
+    consolidateAfter: 10m                      # slower than the amd64 pool: pods here are fewer and heavier
     budgets:
       - nodes: "1"                             # replace at most one node at a time
   limits:

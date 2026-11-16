@@ -1,0 +1,73 @@
+# WHO IS ASKED ABOUT A CCB
+#
+# Edited from the UI (CCB, then Approval matrix) by an admin, and can be edited by hand too.
+#
+#   Approvers:     LK Tech (one list per team that owns a service), LK Platform
+#   Sign-offs:     Security, QA
+#   Executioners:  DevOps, DataOps
+#
+# The person filing a CCB picks the actual people from these lists. A name with no email is listed only:
+# it is never emailed and cannot be picked.
+#
+# To keep UI changes in the project: ./scripts/minikube.sh approvers-export
+# To replace the live file with the project's copy: ./scripts/minikube.sh approvers-reset
+
+approvers:
+  LK Tech:
+    groups:
+      POS:
+        - name: Abhay Urmaliya
+        - name: Bhupendra Dhami
+      Juno:
+        - name: Mayank Mishra
+        - name: Neeraj Kumar
+        - name: Bhupendra Dhami
+        - name: Dhurv
+          email: dhruv.sharma@lenskart.com
+      CES:
+        - name: Pawan Gogia
+        - name: Jitendra Yadav
+      SCM/NEXS:
+        - name: Harish Kumar
+        - name: Gyan Prabhat
+      Puno:
+        - name: Ashish Jain
+        - name: Ram Pravesh
+        - name: Aditya Grover
+      JJ:
+        - name: Mohit Gahlot
+        - name: Mayank Mishra
+      Analytics:
+        - name: Ajeet Singh
+        - name: Neelmani Gupta
+      Cosmos:
+        - name: Arun TK
+        - name: Bhupendra Dhami
+      LK Store:
+        - name: Ravinder Singh
+        - name: Rahul Rupani
+  LK Platform:
+    owners:
+      - name: Pratiti Basu
+      - name: Vikram Gaur
+      - name: Natraj Choudhury
+  Security:
+    owners:
+      - name: Mohit Sharma
+  QA:
+    owners:
+      - name: Amit Agarwal
+      - name: Praval Agrawal
+      - name: Meghna Sen
+  DevOps:
+    owners:
+      - name: Mihir Popat
+      - name: Hemanth
+      - name: Sugandh Pashricha
+      - name: Harshit Bansal
+      - name: Akhil Kumar
+      - name: Prakash Pandey
+  DataOps:
+    owners:
+      - name: Siddharth Sharma
+      - name: Hashneet Kaur

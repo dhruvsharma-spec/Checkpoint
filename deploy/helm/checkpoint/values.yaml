@@ -12,12 +12,29 @@ image:
 webUrl: https://checkpoint.example.com
 
 app:
+  # production = Google sign-in only. "local" adds a developer sign-in button and must never be used in devx-prod
+  # (the chart refuses to render it there).
+  env: production
+  devLogin: "false"
+  # Secure cookies need HTTPS. Only staging, reached by port-forward until its certificate exists, turns this off.
+  cookieSecure: "true"
   allowedEmailDomains: "lenskart.com,lenskart.in"
   bootstrapAdmins: "dhruv.sharma@lenskart.com"
   enabledCcbTypes: "general"
   sessionHours: "8"
   seedSamples: "false"
   mailFrom: "Checkpoint <checkpoint@lenskart.com>"
+  # Sign-in through the company IdP (OpenID Connect). Fill in issuer (or discoveryUrl) and put the client id and secret
+  # in the cluster secret as OIDC_CLIENT_ID and OIDC_CLIENT_SECRET. An empty issuer hides the button.
+  oidc:
+    issuer: ""                 # e.g. https://idp.lenskart.com/realms/lenskart
+    discoveryUrl: ""           # only when the discovery document is not at <issuer>/.well-known/openid-configuration
+    scopes: openid email profile
+    label: Company SSO
+    emailClaim: email          # which claim holds the address, e.g. preferred_username for some IdPs
+    nameClaim: name
+    requireVerified: "true"    # refuses only an explicit email_verified=false
+    pkce: "true"
   smtp:
     host: email-smtp.ap-south-1.amazonaws.com   # Amazon SES, SMTP interface
     port: "587"
@@ -25,10 +42,10 @@ app:
 
 # Secrets are never in this chart. Create them first (./scripts/eks.sh secrets <env>). Keys used:
 #   DATABASE_URL, MYSQL_PASSWORD, MYSQL_ROOT_PASSWORD, SESSION_SECRET,
-#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SMTP_USER, SMTP_PASS
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SMTP_USER, SMTP_PASS, OIDC_CLIENT_ID, OIDC_CLIENT_SECRET
 existingSecret: checkpoint-secrets
 
-# Where the pods run. With Karpenter, point this at the NodePool in deploy/karpenter (karpenter.sh/nodepool: devx).
+# Where the pods run. values-stg.yaml and values-prod.yaml set the devx pool (deploy/karpenter/devx-nodepool.yaml).
 nodeSelector: {}
 tolerations: []
 

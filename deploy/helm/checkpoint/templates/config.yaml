@@ -3,20 +3,34 @@ kind: ConfigMap
 metadata:
   name: {{ include "cp.name" . }}-config
   labels: {{- include "cp.labels" . | nindent 4 }}
+{{- if and (eq .Values.app.env "local") (contains "prod" .Release.Namespace) }}
+{{- fail (printf "app.env=local is not allowed in %s: it turns on the developer sign-in button" .Release.Namespace) }}
+{{- end }}
 data:
-  # Production mode: no dev sign-in, Secure cookies, Google sign-in only.
-  APP_ENV: production
+  # local = the developer sign-in button (staging only, until Google OAuth exists). production = Google sign-in only.
+  APP_ENV: {{ .Values.app.env | quote }}
+  DEV_LOGIN: {{ .Values.app.devLogin | quote }}
   WEB_URL: {{ .Values.webUrl | quote }}
   ALLOWED_EMAIL_DOMAINS: {{ .Values.app.allowedEmailDomains | quote }}
   BOOTSTRAP_ADMINS: {{ .Values.app.bootstrapAdmins | quote }}
   ENABLED_CCB_TYPES: {{ .Values.app.enabledCcbTypes | quote }}
   SESSION_HOURS: {{ .Values.app.sessionHours | quote }}
   SEED_SAMPLES: {{ .Values.app.seedSamples | quote }}
-  COOKIE_SECURE: "true"
+  COOKIE_SECURE: {{ .Values.app.cookieSecure | quote }}
   SMTP_HOST: {{ .Values.app.smtp.host | quote }}
   SMTP_PORT: {{ .Values.app.smtp.port | quote }}
   SMTP_TLS: {{ .Values.app.smtp.tls | quote }}
   MAIL_FROM: {{ .Values.app.mailFrom | quote }}
+  # Company IdP sign-in (OpenID Connect). The client id and secret come from the secret; these say where the provider
+  # is and which button the login page shows. With no issuer, the button is not shown at all.
+  OIDC_ISSUER: {{ .Values.app.oidc.issuer | quote }}
+  OIDC_DISCOVERY_URL: {{ .Values.app.oidc.discoveryUrl | quote }}
+  OIDC_SCOPES: {{ .Values.app.oidc.scopes | quote }}
+  OIDC_LABEL: {{ .Values.app.oidc.label | quote }}
+  OIDC_EMAIL_CLAIM: {{ .Values.app.oidc.emailClaim | quote }}
+  OIDC_NAME_CLAIM: {{ .Values.app.oidc.nameClaim | quote }}
+  OIDC_REQUIRE_VERIFIED: {{ .Values.app.oidc.requireVerified | quote }}
+  OIDC_PKCE: {{ .Values.app.oidc.pkce | quote }}
   APPROVERS_FILE: /seed/approvers.yaml
   USERS_FILE: /seed/users.yaml
   INVENTORY_DIR: /inventory

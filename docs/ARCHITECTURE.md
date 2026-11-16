@@ -167,7 +167,9 @@ What a person may do in Checkpoint, separate from who approves: **Member** (file
 
 ### Sample CCBs
 
-The first time the backend starts, 13 sample CCBs are filed by the first admin so the screens have something to show: different types (Cloudflare, Database, Release, Kubernetes, Scaling, Planned Downtime, Security, Kafka, General, Access, Instance Resize, Nginx, Monitoring), risks, the three environments, and every status (awaiting, cleared, rejected, rolled out, rolled back). They are loaded once and can be deleted like any CCB. Set `SEED_SAMPLES` to `false` in `deploy/k8s/configmap.yaml` to load none.
+**Off by default.** A new database holds no CCBs. Only when `SEED_SAMPLES` is exactly `"true"` does the first start file 13 sample CCBs (as the first admin) so the screens have something to show: different types, risks, environments, and every status. They are loaded once, and the list is in `backend/prisma/samples.ts`.
+
+To remove samples that were loaded earlier: `./scripts/minikube.sh remove-samples` or `./scripts/eks.sh remove-samples <env>`. It lists them first and removes them only after you type `yes`. A CCB counts as a sample only if both its type and its title match the list, so CCBs people filed are never touched. Their audit trail stays, as when a CCB is deleted in the app, and if no CCB is left the numbering starts again from the beginning.
 
 ### Asking before changing anything
 

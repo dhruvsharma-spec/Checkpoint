@@ -79,9 +79,21 @@ spec:
       {{- with .Values.tolerations }}
       tolerations: {{- toYaml . | nindent 8 }}
       {{- end }}
+      initContainers:
+        # MySQL refuses to start unless its data directory is empty. An EBS volume's root holds lost+found, so the
+        # database lives in a sub-folder that this step creates. It runs as the pod's own user (999), which can write to
+        # the volume root because fsGroup gives it that group; it must not run as root, or the pod's non-root policy
+        # rejects the whole pod.
+        - name: datadir
+          image: {{ .Values.mysql.image }}
+          command: ["sh", "-c", "mkdir -p /var/lib/mysql/data"]
+          securityContext: {{- include "cp.containerSecurity" . | nindent 12 }}
+          volumeMounts: [{ name: data, mountPath: /var/lib/mysql }]
+          resources: { requests: { cpu: 10m, memory: 32Mi }, limits: { memory: 128Mi } }
       containers:
         - name: mysql
           image: {{ .Values.mysql.image }}
+          args: ["--datadir=/var/lib/mysql/data"]
           ports:
             - { name: mysql, containerPort: 3306 }
           env:

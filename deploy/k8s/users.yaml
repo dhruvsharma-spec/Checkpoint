@@ -17,5 +17,3 @@
 
 users:
   - { name: Dhruv Sharma, email: dhruv.sharma@lenskart.com, access: admin }
-aws ec2 describe-volumes --filters Name=status,Values=available \
-  --query 'Volumes[].[VolumeId,Size,VolumeType]' --output table

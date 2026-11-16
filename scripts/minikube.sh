@@ -1,5 +1,4 @@
-aws sts get-caller-identity
-aws configure get region#!/usr/bin/env bash
+#!/usr/bin/env bash
 # One-stop helper for running Checkpoint on minikube.   ./scripts/minikube.sh help
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -108,6 +107,14 @@ case "${1:-help}" in
     mv "$tmp" deploy/k8s/users.yaml
     echo "Saved who is in Checkpoint into deploy/k8s/users.yaml"
     ;;
+  remove-samples) # list the sample CCBs and remove them if you type yes (loaded earlier with SEED_SAMPLES=true)
+    need kubectl
+    out=$(kc -n $NS exec deploy/checkpoint-backend -c api -- npx tsx scripts/remove-samples.ts); echo "$out"
+    echo "$out" | grep -q "found:" || exit 0
+    read -r -p "Remove these CCBs, with their approvals and comments? Type yes: " a
+    [ "$a" = yes ] || { echo "Cancelled."; exit 0; }
+    kc -n $NS exec deploy/checkpoint-backend -c api -- npx tsx scripts/remove-samples.ts --yes
+    ;;
   open)      # forward ports and keep running; Ctrl+C to stop
     need kubectl
     trap 'kill 0' EXIT
@@ -145,6 +152,18 @@ case "${1:-help}" in
     kc -n $NS rollout status deploy/checkpoint-backend --timeout=300s
     echo "Google sign-in is now configured."
     ;;
+  oidc)      # ./scripts/minikube.sh oidc   asks for the company IdP client id and secret, stores them, restarts the backend
+    need kubectl
+    read -r -p "Company IdP client ID: " id
+    read -r -s -p "Company IdP client secret: " secret; echo
+    [ -n "$id" ] && [ -n "$secret" ] || { echo "Both the client ID and the secret are needed."; exit 1; }
+    kc -n $NS create secret generic checkpoint-oidc \
+      --from-literal=OIDC_CLIENT_ID="$id" --from-literal=OIDC_CLIENT_SECRET="$secret" \
+      --dry-run=client -o yaml | kc apply -f -
+    kc -n $NS rollout restart deploy/checkpoint-backend
+    kc -n $NS rollout status deploy/checkpoint-backend --timeout=300s
+    echo "Company sign-in is configured. The IdP must have this redirect URI registered: http://localhost:3000/api/auth/oidc/callback"
+    ;;
   psql)      # open a SQL prompt inside the database pod
     need kubectl
     kc -n $NS exec -it statefulset/checkpoint-db -- psql -U checkpoint -d checkpoint
@@ -155,8 +174,16 @@ case "${1:-help}" in
   reset)     # delete the app and ALL its data (the database volume too), keep minikube
     need kubectl
     read -r -p "This deletes the Checkpoint database and its volume. Type yes to continue: " a
-    [ "$a" = "yes" ] && kc delete namespace $NS --wait=true
-    ;;
+    [ "$a" = "yes" ] || exit 0
+    kc delete namespace $NS --wait=true
+    # The database claim is Retain, and minikube's volume provisioner names its folder after the namespace and the
+    # claim. Deleting the namespace leaves both behind, so the next "up" would bind a new claim to the old files.
+    # Delete the old claims' volumes too; their folders go with them.
+    for pv in $(kc get pv -o jsonpath='{range .items[?(@.spec.claimRef.namespace=="'$NS'")]}{.metadata.name}{"\n"}{end}' 2>/dev/null); do
+      kc delete pv "$pv" --wait=false >/dev/null
+    done
+    echo "Checkpoint, its database and its volumes are gone."
+    ;;     # (a leftover folder under /tmp/hostpath-provisioner only wastes space: the database lives in a sub-folder)
   *)
     cat <<'TXT'
 Usage: ./scripts/minikube.sh <command>
@@ -172,7 +199,9 @@ Usage: ./scripts/minikube.sh <command>
   users-export      save who is in Checkpoint into deploy/k8s/users.yaml
   rebuild    rebuild both images and restart; or "rebuild frontend" / "rebuild backend" for one
   google ID SECRET   store Google sign-in credentials and restart
+  oidc       store the company IdP client id and secret (asks for them) and restart
   psql       open a SQL prompt in the database
+  remove-samples  list the sample CCBs and remove them if you type yes
   stop       pause minikube (data is kept)
   reset      delete the app and its data (the database volume)
 TXT

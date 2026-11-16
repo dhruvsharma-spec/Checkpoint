@@ -74,8 +74,8 @@ Sign-in is Google only. Until Google is set up (section 7), use the **Dhruv** bu
 ## 5. Try the main flow
 
 1. Signing in lands on **CCB**: the list of every change. The sidebar has the **CCB** section, with **Calendar** and **Approval matrix** under it. **Access Management** and your own details are reachable from the top right and the bottom of the sidebar. There is no separate home page.
-2. **CCB** already holds 13 sample CCBs, in every status and across Production, Preprod and Staging. Use the **Type** and **Status** drop-downs to filter. Delete the samples whenever you like.
-3. Open one that is waiting, for example "Add a composite index on order_items". The page lists every step as **Pending**, **Approved** or **Rejected**, with the names still waiting. Under **Your steps**, press **Approve…** and confirm. With the default test list you are on every step, so you can answer for each in turn.
+2. **CCB** starts empty. (To see the screens with data, set `SEED_SAMPLES` to `"true"` in `deploy/k8s/configmap.yaml`, run `./scripts/minikube.sh apply`, and a dozen sample CCBs appear once. `./scripts/minikube.sh remove-samples` removes them again.) Use the **Type** and **Status** drop-downs to filter.
+3. File a CCB with **+ New CCB**, then open it. The page lists every step as **Pending**, **Approved** or **Rejected**, with the names still waiting. Under **Your steps**, press **Approve…** and confirm. With the default test list you are on every step, so you can answer for each in turn.
 4. In the mail viewer, the emails arrive a few seconds later (the worker sends them).
 5. When every step has approved, the change is **Cleared**. Mark it **Rolled out** (or rolled back) from the CCB page.
 6. **+ New CCB** is one page, filled top to bottom (only General can be filed for now, so it opens straight on the form; other kinds are switched off with `ENABLED_CCB_TYPES` in `deploy/k8s/configmap.yaml`):
@@ -108,6 +108,22 @@ MySQL stores its data on a PersistentVolumeClaim (`data-checkpoint-db-0`). It su
 ```
 
 Sign out and click **Continue with Google** with a `@lenskart.com` or `@lenskart.in` account. Your email in `BOOTSTRAP_ADMINS` becomes an admin. Everyone else starts with read access: open **Access** to give people write or admin. To make someone an approver, add them to `deploy/k8s/approvers.yaml` and run `./scripts/minikube.sh apply`.
+
+### Sign in through the company IdP instead of Google
+
+The company's own identity provider works the same way, and it is the one used on EKS. The IdP's admin must register
+`http://localhost:3000/api/auth/oidc/callback` as a redirect URI for the client first; without that, the provider
+refuses the request before it ever reaches Checkpoint. Then:
+
+```bash
+./scripts/minikube.sh rebuild      # once, so the running images have the IdP code
+./scripts/minikube.sh oidc         # asks for the client id and secret (the secret is not echoed or kept in your history)
+./scripts/minikube.sh open         # http://localhost:3000, then "Continue with Company SSO"
+```
+
+`OIDC_ISSUER` is in `deploy/k8s/configmap.yaml`; the button stays hidden until the secret exists. Your machine must be able to
+reach the IdP, since the backend inside minikube calls it directly. `./scripts/minikube.sh logs backend` shows lines
+starting `OIDC:` with the reason when a sign-in is refused.
 
 ## 8. Everyday commands
 

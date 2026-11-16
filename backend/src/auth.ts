@@ -85,11 +85,17 @@ export async function googleCallback(code: string): Promise<SessionUser> {
   const ticket = await gclient().verifyIdToken({ idToken: tokens.id_token, audience: cfg.google.clientId });
   const p = ticket.getPayload();
   if (!p?.email || !p.email_verified) throw unauthorized('Google account email is not verified');
-  if (!isAllowedEmail(p.email)) throw unauthorized('This account is not part of an allowed company domain');
-  const email = p.email.toLowerCase();
-  const existing = await db.user.findUnique({ where: { email } });
-  const access = existing ? (bootstrapAccess(email) === 'admin' ? 'admin' : existing.access) : bootstrapAccess(email);
-  const u = await db.user.upsert({ where: { email }, update: { lastLoginAt: new Date(), access }, create: { email, name: p.name || email.split('@')[0], access, lastLoginAt: new Date() } });
+  return signInIdentity(p.email, p.name || '');
+}
+
+// Every provider ends here: check the domain, then create the user on first sign-in or update the last-login time.
+// Access is recomputed for bootstrap admins only, so nobody is silently promoted or demoted by signing in again.
+export async function signInIdentity(email: string, name: string): Promise<SessionUser> {
+  if (!isAllowedEmail(email)) throw unauthorized('This account is not part of an allowed company domain');
+  const mail = email.toLowerCase();
+  const existing = await db.user.findUnique({ where: { email: mail } });
+  const access = existing ? (bootstrapAccess(mail) === 'admin' ? 'admin' : existing.access) : bootstrapAccess(mail);
+  const u = await db.user.upsert({ where: { email: mail }, update: { lastLoginAt: new Date(), access }, create: { email: mail, name: name || mail.split('@')[0], access, lastLoginAt: new Date() } });
   return toSession(u);
 }
 

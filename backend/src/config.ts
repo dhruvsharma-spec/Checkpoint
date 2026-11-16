@@ -26,6 +26,24 @@ export const cfg = {
     clientSecret: env.GOOGLE_CLIENT_SECRET ?? '',
     redirectUri: env.GOOGLE_REDIRECT_URI || `${webUrl}/api/auth/google/callback`,
   },
+  // Sign-in through an OpenID Connect provider (the company IdP). Everything is optional: with no issuer and no client
+  // id, the login page simply shows no such button.
+  oidc: {
+    issuer: (env.OIDC_ISSUER ?? '').replace(/\/$/, ''),
+    // Some IdPs keep the discovery document somewhere else; this overrides issuer + /.well-known/openid-configuration.
+    discoveryUrl: env.OIDC_DISCOVERY_URL ?? '',
+    clientId: env.OIDC_CLIENT_ID ?? '',
+    clientSecret: env.OIDC_CLIENT_SECRET ?? '',
+    scopes: env.OIDC_SCOPES || 'openid email profile',
+    redirectUri: env.OIDC_REDIRECT_URI || `${webUrl}/api/auth/oidc/callback`,
+    // What the login button says, and which claim holds the address and the display name.
+    label: env.OIDC_LABEL || 'Company SSO',
+    emailClaim: env.OIDC_EMAIL_CLAIM || 'email',
+    nameClaim: env.OIDC_NAME_CLAIM || 'name',
+    // Many in-house IdPs do not send email_verified. Turn this off only if the IdP itself is trusted to hold the address.
+    requireVerified: (env.OIDC_REQUIRE_VERIFIED ?? 'true') === 'true',
+    pkce: (env.OIDC_PKCE ?? 'true') === 'true',
+  },
   // Cookies are Secure in production. COOKIE_SECURE=false is only for plain-http setups.
   cookieSecure: env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : prod,
   devLogin: !prod && (env.DEV_LOGIN ?? 'true') === 'true',

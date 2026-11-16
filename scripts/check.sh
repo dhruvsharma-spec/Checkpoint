@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Checks everything in throwaway Docker containers (no Node, MySQL or Helm needed on this machine):
-#   ./scripts/check.sh            backend (types, migrations, seed, end-to-end test on MySQL 8.4) and frontend (types, build)
+#   ./scripts/check.sh            backend (types, migrations, seed, samples, end-to-end test on MySQL 8.4) and frontend (types, build)
 #   ./scripts/check.sh backend    only the backend
 #   ./scripts/check.sh frontend   only the frontend
 #   ./scripts/check.sh helm       lint and render the Helm chart for staging and production
@@ -20,6 +20,7 @@ backend() {
   for _ in $(seq 1 60); do docker exec $DB mysql -ucheckpoint -ppw -e 'select 1' checkpoint >/dev/null 2>&1 && break; sleep 2; done
   # An empty database Prisma uses to replay the migrations when comparing them with the schema.
   docker exec $DB mysql -uroot -proot -e 'create database if not exists shadow' >/dev/null 2>&1
+  log=$(mktemp); rc=0
   docker run --rm --network $NET \
     -v "$ROOT/backend":/src:ro -v "$ROOT/deploy/k8s":/inventory:ro -v "$ROOT/backend/test/approvers.yaml":/seed/approvers.yaml:ro \
     -e DATABASE_URL="mysql://checkpoint:pw@$DB:3306/checkpoint" \
@@ -37,13 +38,32 @@ export ENABLED_CCB_TYPES=all APP_ENV=local SESSION_SECRET=test-secret APPROVERS_
 echo "--> seed"; npx tsx prisma/seed.ts 2>&1 | tail -4
 npx tsx src/index.ts > /tmp/api.log 2>&1 &
 for i in $(seq 1 60); do node -e "fetch(\"http://localhost:4000/api/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" && break; sleep 1; done
-echo "--> end-to-end"; npx tsx test/smoke.ts | grep -vE "^PASS" || { tail -20 /tmp/api.log; exit 1; }
+# The exit code of the test itself decides. Through a pipe, "grep -v PASS" succeeds whenever it prints a FAIL line.
+echo "--> end-to-end"; r=0; npx tsx test/smoke.ts > /tmp/smoke.txt 2>&1 || r=$?; grep -vE "^PASS" /tmp/smoke.txt || true
+[ "$r" = 0 ] || { tail -20 /tmp/api.log; echo "END-TO-END CHECKS FAILED"; exit 1; }
+echo "--> sample CCBs: listed, removed, and never loaded unless asked for"
+npx tsx scripts/remove-samples.ts | sed -n "1,2p"
+npx tsx scripts/remove-samples.ts | grep -q "Nothing was changed" || { echo "DRY RUN DID NOT STOP"; exit 1; }
+test "$(node -e "const {PrismaClient}=require(\"@prisma/client\");const p=new PrismaClient();p.ccb.count().then(n=>{console.log(n);return p.\$disconnect()})")" -ge 13 || { echo "DRY RUN REMOVED SOMETHING"; exit 1; }
+npx tsx scripts/remove-samples.ts --yes | tail -2
+npx tsx scripts/remove-samples.ts | grep -q "No sample CCBs found" && echo "samples removed"
+# Forget the note that says they were loaded, then seed with SEED_SAMPLES unset: nothing may be loaded.
+node -e "const {PrismaClient}=require(\"@prisma/client\");const p=new PrismaClient();p.auditLog.deleteMany({where:{action:\"Sample CCBs loaded\"}}).then(()=>p.\$disconnect())"
+env -u SEED_SAMPLES npx tsx prisma/seed.ts >/dev/null 2>&1
+n=$(node -e "const {PrismaClient}=require(\"@prisma/client\");const p=new PrismaClient();p.ccb.count().then(n=>{console.log(n);return p.\$disconnect()})")
+[ "$n" = 0 ] && echo "samples are off unless SEED_SAMPLES=true" || { echo "SAMPLES WERE LOADED BY DEFAULT ($n CCBs)"; exit 1; }
 echo "--> worker sends one batch"; timeout 8 npx tsx worker/index.ts 2>&1 | grep -E "Outbox|started" | head -3 || true
 echo "--> approval matrix from the command line"
 npx tsx scripts/approvers.ts export > /tmp/m.yaml && grep -q "LK Tech" /tmp/m.yaml && echo "export OK"
 npx tsx scripts/approvers.ts import < /tmp/m.yaml 2>&1 | tail -1
 echo "approvers: [" | npx tsx scripts/approvers.ts import >/dev/null 2>&1 && { echo "BROKEN YAML WAS ACCEPTED"; exit 1; } || echo "broken YAML refused"
-' || fail=1
+echo "backend: every step ran"
+' 2>&1 | tee "$log" || rc=1
+  # A script cut short exits 0 as well (a stray quote mark inside the string above does exactly that). The last line it
+  # prints is the proof that it ran to the end.
+  [ "$rc" = 0 ] || fail=1
+  [ "$rc" = 1 ] || grep -q "^backend: every step ran$" "$log" || { echo "BACKEND CHECK ENDED EARLY"; fail=1; }
+  rm -f "$log"
   docker rm -f $DB >/dev/null 2>&1 || true
 }
 

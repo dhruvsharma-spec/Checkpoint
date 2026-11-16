@@ -11,6 +11,8 @@ import { isAllowedEmail, type SessionUser } from './auth';
 import { cfg } from './config';
 import * as S from './schemas';
 
+const WINDOW_SLACK_MS = 2 * 60_000;
+
 const include = {
   requester: { select: { id: true, name: true, email: true } },
   approvals: { include: { decidedBy: { select: { name: true } } }, orderBy: [{ stage: 'asc' as const }, { id: 'asc' as const }] },
@@ -126,7 +128,11 @@ export async function create(u: SessionUser, b: z.infer<typeof S.createCcb>) {
   }
   if (missing.length) throw bad('Required fields are missing', { missing });
   const start = new Date(b.windowAt), end = new Date(b.windowEndAt);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) throw bad('The change window needs a valid start and end');
   if (end <= start) throw bad('The change window must end after it starts');
+  // A change cannot be scheduled in the past. The form already refuses it; this is the same rule for anyone calling the
+  // API directly. The slack covers clock differences and the seconds a submit takes, so picking "now" still works.
+  if (start.getTime() < Date.now() - WINDOW_SLACK_MS) throw bad('The change window cannot start in the past');
 
   // Everyone picked, checked against the lists: each must be listed, with an email, where they were picked from.
   const rows: { role: string; group: string; email: string; name: string }[] = [];

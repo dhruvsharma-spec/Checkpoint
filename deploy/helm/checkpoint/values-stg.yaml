@@ -1,8 +1,28 @@
 # Staging: namespace devx-stg.
-webUrl: https://checkpoint-stg.example.com
+# Run only on the devx Karpenter pool (deploy/karpenter/devx-nodepool.yaml): on-demand, and tainted so that nothing
+# else in the cluster is scheduled onto these nodes. The selector keeps us off everyone else's nodes.
+nodeSelector: { karpenter.sh/nodepool: devx }
+tolerations:
+  - { key: workload, operator: Equal, value: devx, effect: NoSchedule }
+
+# Reached at https://checkpoint.preprod.lenskart.com through Cloudflare. Cloudflare terminates the public certificate
+# and enforces an Access policy (email verification) before a request gets here, and the ALB below accepts only
+# Cloudflare's addresses, so the app cannot be reached any other way. The origin certificate is the existing
+# *.preprod.lenskart.com wildcard, which covers exactly this one label.
+webUrl: https://checkpoint.preprod.lenskart.com
 app:
+  # TEMPORARY, until the Google OAuth client exists: a "Local development only" sign-in button. It is a bypass, which
+  # is why it sits behind the Cloudflare Access policy. When the client is in place, delete these two lines (the
+  # defaults are production).
+  env: local
+  devLogin: "true"
+  cookieSecure: "true"
   seedSamples: "false"
   bootstrapAdmins: "dhruv.sharma@lenskart.com"
+  # The company IdP. The client id and secret are in checkpoint-secrets (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET).
+  # The IdP must have https://checkpoint.preprod.lenskart.com/api/auth/oidc/callback registered as the redirect URI.
+  oidc:
+    issuer: https://idp.lenskart.com
 backend:
   replicas: 1
   autoscaling: { enabled: true, minReplicas: 1, maxReplicas: 3, cpu: 70 }
@@ -10,7 +30,21 @@ frontend:
   replicas: 1
   autoscaling: { enabled: true, minReplicas: 1, maxReplicas: 3, cpu: 70 }
 ingress:
-  host: checkpoint-stg.example.com
+  enabled: true
+  host: checkpoint.preprod.lenskart.com
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/ip-address-type: ipv4
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:ap-south-1:964059510816:certificate/b8ff9251-596a-4ed2-b47e-d24ee9e6cbc8
+    # Only Cloudflare may reach the ALB. Without this, anyone who learned the ALB's own DNS name could skip the
+    # Access policy and use the developer sign-in. Ranges from https://www.cloudflare.com/ips-v4 — revisit when
+    # Cloudflare publishes changes.
+    alb.ingress.kubernetes.io/inbound-cidrs: "173.245.48.0/20,103.21.244.0/22,103.22.200.0/22,103.31.4.0/22,141.101.64.0/18,108.162.192.0/18,190.93.240.0/20,188.114.96.0/20,197.234.240.0/22,198.41.128.0/17,162.158.0.0/15,104.16.0.0/13,104.24.0.0/14,172.64.0.0/13,131.0.72.0/22"
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
 mysql:
   resources:
     requests: { cpu: 100m, memory: 512Mi }
@@ -19,4 +53,4 @@ mysql:
   storage: { size: 10Gi, iops: "3000", throughput: "125" }
 backup:
   schedule: "30 20 * * *"
-  bucket: ""
+  bucket: lk-devx-checkpoint-backups

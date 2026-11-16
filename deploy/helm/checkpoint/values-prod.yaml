@@ -1,4 +1,14 @@
 # Production: namespace devx-prod.
+# Run only on the devx Karpenter pool (deploy/karpenter/devx-nodepool.yaml): on-demand, and tainted so that nothing
+# else in the cluster is scheduled onto these nodes. The selector keeps us off everyone else's nodes.
+nodeSelector: { karpenter.sh/nodepool: devx }
+tolerations:
+  - { key: workload, operator: Equal, value: devx, effect: NoSchedule }
+
+app:
+  env: production          # Google sign-in only; the chart refuses app.env=local in devx-prod
+  devLogin: "false"
+
 webUrl: https://checkpoint.example.com
 backend:
   replicas: 2

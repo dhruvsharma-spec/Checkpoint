@@ -3,13 +3,16 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 
-export type Cfg = { google: boolean; devLogin: boolean; domains: string[] };
+export type Cfg = { google: boolean; oidc: { enabled: boolean; label: string }; devLogin: boolean; domains: string[] };
 
 const ERRORS: Record<string, string> = {
   google_not_configured: 'Google sign-in is not set up on this server yet.',
   domain: 'That Google account is not part of an allowed company domain.',
   state: 'The sign-in session expired. Please try again.',
   google: 'Google sign-in did not complete. Please try again.',
+  oidc_not_configured: 'Company sign-in is not set up on this server yet.',
+  oidc: 'Company sign-in did not complete. Please try again.',
+  oidc_denied: 'The company sign-in refused this request',
 };
 
 export const DEV_USERS: [string, string][] = [['dhruv.sharma@lenskart.com', 'Dhruv']];
@@ -21,7 +24,7 @@ export function useLoginFlow() {
   const qs = useSearchParams();
   const next = qs.get('next') && qs.get('next')!.startsWith('/') ? qs.get('next')! : '/';
   const [cfg, setCfg] = useState<Cfg | null>(null);
-  const [err, setErr] = useState(qs.get('error') ? ERRORS[qs.get('error')!] ?? 'Sign-in failed.' : '');
+  const [err, setErr] = useState(qs.get('error') ? (ERRORS[qs.get('error')!] ?? 'Sign-in failed.') + (qs.get('reason') ? ` (${qs.get('reason')})` : '') : '');
   const [phase, setPhase] = useState<'form' | 'loading'>('form');
   const [step, setStep] = useState(0);
   const [msg, setMsg] = useState('');
@@ -43,9 +46,11 @@ export function useLoginFlow() {
     }
   };
   const google = () => { window.location.href = `/api/auth/google?next=${encodeURIComponent(next)}`; };
+  // The company IdP: same redirect pattern, the backend does the rest.
+  const oidc = () => { window.location.href = `/api/auth/oidc?next=${encodeURIComponent(next)}`; };
   const devLogin = (email: string) => run('Signing in for local development', () => api('/auth/dev-login', { body: { email } }));
   const domains = cfg ? cfg.domains.map((d) => '@' + d).join(' and ') : 'company';
 
-  return { cfg, err, phase, step, msg, google, devLogin, domains };
+  return { cfg, err, phase, step, msg, google, oidc, devLogin, domains };
 }
 export type Flow = ReturnType<typeof useLoginFlow>;

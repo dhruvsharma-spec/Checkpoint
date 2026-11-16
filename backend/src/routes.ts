@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { randomBytes } from 'crypto';
 import * as A from './auth';
+import * as O from './oidc';
 import * as ccb from './ccb';
 import { cfg } from './config';
 import { db } from './db';
@@ -21,7 +22,7 @@ api.get('/live', (_req, res) => void res.json({ ok: true }));
 
 // ---------- auth ----------
 // Public: tells the sign-in page which options to show.
-api.get('/auth/config', handle(async () => ({ google: A.googleConfigured(), devLogin: cfg.devLogin, domains: cfg.allowedDomains })));
+api.get('/auth/config', handle(async () => ({ google: A.googleConfigured(), oidc: { enabled: O.oidcConfigured(), label: cfg.oidc.label }, devLogin: cfg.devLogin, domains: cfg.allowedDomains })));
 
 api.get('/auth/me', handle(async (req) => A.requireUser(req)));
 
@@ -64,6 +65,41 @@ api.get('/auth/google/callback', handle(async (req, res) => {
     res.redirect(cfg.webUrl + safeNext(next));
   } catch (e) {
     fail(e instanceof HttpError ? 'domain' : 'google');
+  }
+}));
+
+// Step 1 of IdP sign-in: the same shape as Google, but the provider is whatever OIDC_ISSUER points at.
+api.get('/auth/oidc', handle(async (req, res) => {
+  if (!O.oidcConfigured()) return res.redirect(`${cfg.webUrl}/login?error=oidc_not_configured`);
+  const { url, cookie } = await O.begin(safeNext(String(req.query.next ?? '')));
+  A.setCookie(res, O.OIDC_COOKIE, cookie, 600);
+  res.redirect(url);
+}));
+// Step 2: the provider sends the browser back here with a code.
+api.get('/auth/oidc/callback', handle(async (req, res) => {
+  const cookie = A.readCookie(req, O.OIDC_COOKIE) ?? '';
+  const fail = (e: string, reason = '') => { A.clearCookie(res, O.OIDC_COOKIE); res.redirect(`${cfg.webUrl}/login?error=${e}${reason ? `&reason=${reason}` : ''}`); };
+  const flat = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n);
+  // The provider can send the person back with an error instead of a code: access denied for this account, a scope it
+  // refuses, an unknown client. Say what it was, in the log and on the login page, rather than a generic message.
+  const refused = flat(req.query.error, 40);
+  if (refused) {
+    console.warn(`OIDC: the provider returned error=${refused} ${flat(req.query.error_description, 200)}`);
+    return fail('oidc_denied', refused.replace(/[^a-z_]/gi, ''));
+  }
+  const code = String(req.query.code ?? ''), state = String(req.query.state ?? '');
+  if (!code || !state) {
+    console.warn(`OIDC: callback arrived without a code or a state (query keys: ${Object.keys(req.query).join(',') || 'none'})`);
+    return fail('state');
+  }
+  try {
+    const { user, next } = await O.finish(code, state, cookie);
+    A.setSessionCookie(res, await A.signSession(user));
+    A.clearCookie(res, O.OIDC_COOKIE);
+    res.redirect(cfg.webUrl + safeNext(next));
+  } catch (e) {
+    console.warn(`OIDC: sign-in failed: ${flat(e instanceof Error ? e.message : e, 300)}`);
+    fail(e instanceof HttpError && e.message.includes('domain') ? 'domain' : 'oidc');
   }
 }));
 

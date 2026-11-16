@@ -11,6 +11,11 @@
 #   ./scripts/eks.sh deploy stg <tag>       install or upgrade
 #   ./scripts/eks.sh backup-now stg         run a backup now and check it reached S3
 #
+# Stopping and starting again (the data, secrets and settings are kept):
+#   ./scripts/eks.sh pause stg              scale everything to zero; the nodes go away by themselves
+#   ./scripts/eks.sh resume stg <tag>       bring it all back
+#   ./scripts/eks.sh remove-samples stg     list the sample CCBs and remove them if you type yes
+#
 # Every kubectl, helm and aws call names the cluster, account and region explicitly, whatever your current
 # kubectl context or AWS profile is. Anything that touches prod asks you to type the environment name first.
 set -euo pipefail
@@ -19,7 +24,7 @@ cd "$(dirname "$0")/.."
 ACCOUNT=964059510816
 REGION=ap-south-1
 CLUSTER=lk-tech-infra-02-eks
-CTX="arn:aws:eks:$REGION:$ACCOUNT:cluster/$CLUSTER"
+CTX="arn:aws:eks:${REGION}:${ACCOUNT}:cluster/${CLUSTER}"   # braces: zsh reads $ACCOUNT:c as a modifier
 REGISTRY="$ACCOUNT.dkr.ecr.$REGION.amazonaws.com"
 RELEASE=checkpoint
 CHART=deploy/helm/checkpoint
@@ -49,13 +54,15 @@ case "${1:-help}" in
   preflight) # read only: what the cluster has
     need aws; need kubectl; check_account
     aw eks update-kubeconfig --name "$CLUSTER" --alias "$CTX" >/dev/null
-    say "Nodes";             kc get nodes -L karpenter.sh/nodepool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone
-    say "Karpenter";         kc get nodepools,ec2nodeclasses 2>&1 | head -20
-    say "metrics-server (the HPAs need it)"; kc -n kube-system get deploy metrics-server 2>&1 | tail -1
-    say "AWS Load Balancer Controller (the Ingress needs it)"; kc get ingressclass 2>&1; kc -n kube-system get deploy aws-load-balancer-controller 2>&1 | tail -1
-    say "EBS CSI driver";    kc get csidrivers ebs.csi.aws.com 2>&1 | tail -1
-    say "Network policies in the VPC CNI"; kc -n kube-system get ds aws-node -o jsonpath='{.spec.template.spec.containers[*].args}' 2>/dev/null | grep -o 'enable-network-policy=[a-z]*' || echo "not enabled (the chart's NetworkPolicy is then not enforced)"
-    say "Namespaces";        kc get ns devx-stg devx-prod 2>&1
+    # A missing object is a finding, not a failure: every check here reports instead of stopping the script.
+    say "Nodes";             kc get nodes -L karpenter.sh/nodepool,node.kubernetes.io/instance-type,topology.kubernetes.io/zone || true
+    say "Karpenter";         { kc get nodepools,ec2nodeclasses 2>&1 || true; } | head -20
+    say "metrics-server (the HPAs need it)"; { kc -n kube-system get deploy 2>&1 | grep -iE "metrics|NAME" || echo "no metrics-server deployment"; } | head -3
+    say "AWS Load Balancer Controller (the Ingress needs it)"; kc get ingressclass 2>&1 || true; { kc -n kube-system get deploy aws-load-balancer-controller 2>&1 || true; } | tail -1
+    say "EBS CSI driver";    kc get csidrivers ebs.csi.aws.com 2>&1 || true
+    say "Network policies in the VPC CNI"; { kc -n kube-system get ds aws-node -o jsonpath='{.spec.template.spec.containers[*].args}' 2>/dev/null | grep -o 'enable-network-policy=[a-z]*' || echo "not enabled (the chart's NetworkPolicy is then not enforced)"; }
+    say "Namespaces";        kc get ns 2>&1 | grep -E "devx|NAME" || echo "neither devx-stg nor devx-prod exists yet"
+    say "Storage classes";   kc get storageclass 2>&1 || true
     ;;
 
   ecr) # create the image repositories (once)
@@ -107,9 +114,17 @@ case "${1:-help}" in
     aw iam put-role-policy --role-name "$ROLE" --policy-name s3-write --policy-document "{\"Version\":\"2012-10-17\",\"Statement\":[
       {\"Effect\":\"Allow\",\"Action\":[\"s3:PutObject\",\"s3:AbortMultipartUpload\"],\"Resource\":\"arn:aws:s3:::$BACKUP_BUCKET/checkpoint/$NS/*\"},
       {\"Effect\":\"Allow\",\"Action\":[\"s3:ListBucket\"],\"Resource\":\"arn:aws:s3:::$BACKUP_BUCKET\",\"Condition\":{\"StringLike\":{\"s3:prefix\":[\"checkpoint/$NS/*\"]}}}]}"
-    if ! aw eks list-pod-identity-associations --cluster-name "$CLUSTER" --namespace "$NS" --service-account checkpoint-backup --query 'associations[0]' --output text | grep -q .; then
+    # Count the associations rather than looking for any output: with no associations, --output text prints the word
+    # "None", which is not empty, so an earlier version of this check thought the association already existed and
+    # skipped creating it.
+    have=$(aw eks list-pod-identity-associations --cluster-name "$CLUSTER" --namespace "$NS" --service-account checkpoint-backup \
+      --query 'length(associations)' --output text 2>/dev/null || echo 0)
+    if [ "${have:-0}" = 0 ]; then
       aw eks create-pod-identity-association --cluster-name "$CLUSTER" --namespace "$NS" --service-account checkpoint-backup \
-        --role-arn "arn:aws:iam::$ACCOUNT:role/$ROLE" >/dev/null
+        --role-arn "arn:aws:iam::${ACCOUNT}:role/${ROLE}" >/dev/null
+      echo "Pod Identity association created: $NS/checkpoint-backup -> $ROLE"
+    else
+      echo "Pod Identity association for $NS/checkpoint-backup already exists"
     fi
     echo "Backup job in $NS can now write to s3://$BACKUP_BUCKET/checkpoint/$NS/"
     ;;
@@ -120,6 +135,7 @@ case "${1:-help}" in
     if kc -n "$NS" get secret checkpoint-secrets >/dev/null 2>&1; then
       echo "checkpoint-secrets already exists in $NS. To change one value:"
       echo "  kubectl --context $CTX -n $NS patch secret checkpoint-secrets -p '{\"stringData\":{\"SMTP_PASS\":\"...\"}}'"
+      echo "  kubectl --context $CTX -n $NS patch secret checkpoint-secrets -p '{\"stringData\":{\"OIDC_CLIENT_ID\":\"...\",\"OIDC_CLIENT_SECRET\":\"...\"}}'"
       echo "Never regenerate MYSQL_PASSWORD or MYSQL_ROOT_PASSWORD: the database already uses them."
       exit 0
     fi
@@ -128,21 +144,24 @@ case "${1:-help}" in
     read -r -s -p "Google OAuth client secret: " GSECRET; echo
     read -r -p "SES SMTP user (blank to set later): " SUSER
     read -r -s -p "SES SMTP password (blank to set later): " SPASS; echo
+    read -r -p "Company IdP OAuth client ID (blank to set later): " OIDCID
+    read -r -s -p "Company IdP OAuth client secret (blank to set later): " OIDCSECRET; echo
     DBPW=$(openssl rand -hex 24); ROOTPW=$(openssl rand -hex 24); SESSION=$(openssl rand -base64 48 | tr -d '\n')
     kc -n "$NS" create secret generic checkpoint-secrets \
       --from-literal=MYSQL_PASSWORD="$DBPW" --from-literal=MYSQL_ROOT_PASSWORD="$ROOTPW" \
       --from-literal=DATABASE_URL="mysql://checkpoint:$DBPW@$RELEASE-mysql:3306/checkpoint?connection_limit=10" \
       --from-literal=SESSION_SECRET="$SESSION" \
       --from-literal=GOOGLE_CLIENT_ID="$GID" --from-literal=GOOGLE_CLIENT_SECRET="$GSECRET" \
-      --from-literal=SMTP_USER="$SUSER" --from-literal=SMTP_PASS="$SPASS" >/dev/null
+      --from-literal=SMTP_USER="$SUSER" --from-literal=SMTP_PASS="$SPASS" \
+      --from-literal=OIDC_CLIENT_ID="$OIDCID" --from-literal=OIDC_CLIENT_SECRET="$OIDCSECRET" >/dev/null
     echo "checkpoint-secrets created in $NS. Keep a copy of the database passwords in your password manager:"
     echo "  kubectl --context $CTX -n $NS get secret checkpoint-secrets -o jsonpath='{.data.MYSQL_ROOT_PASSWORD}' | base64 -d"
     ;;
 
-  deploy) # ./scripts/eks.sh deploy stg <tag>
+  deploy|resume) # ./scripts/eks.sh deploy stg <tag>   install or upgrade;  ./scripts/eks.sh resume stg <tag>   the same, after a pause
     need helm; need kubectl
     ENV=${2:-}; NS=$(ns_of "$ENV"); TAG=${3:-}
-    [ -n "$TAG" ] || { echo "Usage: $0 deploy <stg|prod> <image tag from build>"; exit 2; }
+    [ -n "$TAG" ] || { echo "Usage: $0 $1 <stg|prod> <image tag from build>"; exit 2; }
     kc -n "$NS" get secret checkpoint-secrets >/dev/null 2>&1 || { echo "No checkpoint-secrets in $NS. Run: $0 secrets $ENV"; exit 1; }
     confirm "$ENV" "upgrades the release to $TAG"
     # The chart can only read files inside itself: copy the starting files in.
@@ -150,8 +169,37 @@ case "${1:-help}" in
     say "helm upgrade --install $RELEASE ($NS, $TAG)"
     hm upgrade --install "$RELEASE" "$CHART" -n "$NS" -f "$CHART/values-$ENV.yaml" \
       --set image.registry="$REGISTRY" --set image.tag="$TAG" ${BACKUP_BUCKET:+--set backup.bucket="$BACKUP_BUCKET"} \
-      --atomic --wait --timeout 15m
+      --rollback-on-failure --wait --timeout 15m
+    if [ "$1" = resume ]; then
+      # pause scaled the backend and frontend to zero and removed their autoscalers. Helm brings the autoscalers back,
+      # but leaves a Deployment that is at zero alone, and an autoscaler never scales up from zero. So set them to one.
+      for d in backend frontend; do
+        [ "$(kc -n "$NS" get deploy "$RELEASE-$d" -o jsonpath='{.spec.replicas}')" != 0 ] || kc -n "$NS" scale "deploy/$RELEASE-$d" --replicas=1
+      done
+      for d in backend frontend worker; do kc -n "$NS" rollout status "deploy/$RELEASE-$d" --timeout=10m; done
+    fi
     kc -n "$NS" get pods,ingress
+    ;;
+
+  pause) # ./scripts/eks.sh pause stg   stop everything, keep the data
+    need kubectl; ENV=${2:-}; NS=$(ns_of "$ENV"); confirm "$ENV" "scales everything down, so the app is unavailable"
+    # The autoscalers go first, or they would scale the backend and frontend straight back up.
+    kc -n "$NS" delete hpa "$RELEASE-backend" "$RELEASE-frontend" --ignore-not-found
+    kc -n "$NS" scale deploy --all --replicas=0
+    kc -n "$NS" scale statefulset --all --replicas=0
+    echo "Paused. Karpenter removes the empty node in about 10 minutes. The database volume stays (about \$1 a month)."
+    echo "Bring it back with:  $0 resume $ENV <tag>"
+    ;;
+
+  remove-samples) # ./scripts/eks.sh remove-samples stg   lists the sample CCBs, then removes them if you type yes
+    need kubectl; ENV=${2:-}; NS=$(ns_of "$ENV")
+    run() { kc -n "$NS" exec "deploy/$RELEASE-backend" -c api -- npx tsx scripts/remove-samples.ts "$@"; }
+    out=$(run); echo "$out"
+    echo "$out" | grep -q "found:" || exit 0
+    confirm "$ENV" "removes the sample CCBs"
+    read -r -p "Remove these CCBs, with their approvals and comments? Type yes: " a
+    [ "$a" = yes ] || { echo "Cancelled."; exit 0; }
+    run --yes
     ;;
 
   rollback) # ./scripts/eks.sh rollback stg [revision]   back to the previous (or given) release
@@ -191,7 +239,7 @@ case "${1:-help}" in
     ;;
 
   *)
-    sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
     cat <<'TXT'
 
 Also:  status <env> · logs <env> <part> · rollback <env> [rev] · approvers-export <env> · sql <env>
