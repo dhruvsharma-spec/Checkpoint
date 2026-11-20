@@ -6,10 +6,10 @@ import { abbr } from '@/lib/format';
 const PILL: Record<Status, [string, string]> = { Awaiting: ['--warnBg', '--warn'], Cleared: ['--okBg', '--ok'], Rejected: ['--badBg', '--bad'], 'Rolled out': ['--fill', '--ink'], 'Rolled back': ['--badBg', '--bad'] };
 
 export const StatusPill = ({ s }: { s: Status }) => (
-  <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 12px', borderRadius: 999, fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap', background: `var(${PILL[s][0]})`, color: `var(${PILL[s][1]})` }}>{s}</span>
+  <span style={{ display: 'inline-flex', alignItems: 'center', padding: '3px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', background: `var(${PILL[s][0]})`, color: `var(${PILL[s][1]})` }}>{s}</span>
 );
 export const TypeBadge = ({ t }: { t: string }) => (
-  <span style={{ display: 'inline-block', padding: '3px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: 'var(--fill)', color: 'var(--ink)' }}>{t}</span>
+  <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 6, fontSize: 12, fontWeight: 600, background: 'var(--fill)', color: 'var(--ink)' }}>{t}</span>
 );
 export const riskColor = (r: string) => (r === 'High' ? 'var(--bad)' : r === 'Medium' ? 'var(--warn)' : 'var(--ok)');
 export const Risk = ({ r, suffix = '' }: { r: string; suffix?: string }) => <span style={{ fontSize: 14, fontWeight: 700, color: riskColor(r) }}>{r}{suffix}</span>;
@@ -44,7 +44,7 @@ export const Label = ({ id, children }: { id: string; children: React.ReactNode 
   <label htmlFor={id} style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--ink2)', marginBottom: 5 }}>{children}</label>
 );
 
-export const chip = (on: boolean): React.CSSProperties => ({ minHeight: 36, padding: '0 14px', border: 0, borderRadius: 999, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background-color .2s,color .2s', background: on ? 'var(--accent)' : 'var(--fill)', color: on ? 'var(--accentInk)' : 'var(--ink)' });
+export const chip = (on: boolean): React.CSSProperties => ({ minHeight: 34, padding: '0 12px', border: 0, borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: 'background-color .2s,color .2s', background: on ? 'var(--accent)' : 'var(--fill)', color: on ? 'var(--accentInk)' : 'var(--ink)' });
 
 // A filter that stays closed until it is needed: a button showing the current choice, and a list that
 // opens under it. Closes on a click elsewhere or Esc. Arrow keys move through the list.
@@ -76,7 +76,7 @@ export function Dropdown({ label, value, options, onChange }: { label: string; v
   return (
     <div ref={root} style={{ position: 'relative' }} onKeyDown={onKey}>
       <button type="button" className="th" aria-haspopup="listbox" aria-expanded={open} aria-controls={id} onClick={() => setOpen((o) => !o)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 39, padding: '0 14px', border: '1px solid var(--inLine)', borderRadius: 14, background: 'var(--inBg)', color: 'var(--ink)', font: 'inherit', fontSize: 14, cursor: 'pointer' }}>
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 38, padding: '0 12px', border: '1px solid var(--inLine)', borderRadius: 10, background: 'var(--inBg)', color: 'var(--ink)', font: 'inherit', fontSize: 14, cursor: 'pointer' }}>
         <span style={{ color: 'var(--ink2)' }}>{label}</span>
         <span style={{ fontWeight: 700 }}>{current?.label}</span>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ transition: 'transform .2s', transform: open ? 'rotate(180deg)' : 'none' }}><path d="m6 9 6 6 6-6" /></svg>

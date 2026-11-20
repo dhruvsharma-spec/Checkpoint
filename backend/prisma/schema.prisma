@@ -30,11 +30,12 @@ model User {
   createdAt    DateTime  @default(now())
   lastLoginAt  DateTime?
 
-  ccbs      Ccb[]       @relation("Requester")
-  decisions Approval[]
-  analyses  Analysis[]
-  comments  Comment[]
-  audit     AuditLog[]
+  ccbs       Ccb[]       @relation("Requester")
+  decisions  Approval[]
+  analyses   Analysis[]
+  comments   Comment[]
+  audit      AuditLog[]
+  activities Activity[]
 }
 
 model Ccb {
@@ -181,4 +182,22 @@ model Setting {
   id        String   @id
   value     String   @db.MediumText
   updatedAt DateTime @updatedAt
+}
+
+// Organisation-level work that does not need a CCB: logged so it shows on the calendar and the Activities page.
+model Activity {
+  id          String    @id @default(cuid())
+  title       String    @db.VarChar(200)
+  summary     String    @default("") @db.VarChar(500) // required "Details" in the UI
+  detail      String    @default("") @db.Text
+  team        String    @default("") // DevOps | DataOps | Security | QA | Platform | Other
+  startsAt    DateTime
+  endsAt      DateTime
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([startsAt])
+  @@index([team])
 }

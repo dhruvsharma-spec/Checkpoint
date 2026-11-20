@@ -11,7 +11,7 @@ export const ymd = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: TZ 
 export const toWindowIso = (date: string, time: string) => { const d = new Date(`${date}T${time}:00+05:30`); return isNaN(d.getTime()) ? '' : d.toISOString(); };
 export const whenText = (d: string | Date) => { const p = ist(d); return `${p.dayName} ${p.dn} ${p.mon} · ${p.time} IST`; };
 
-export const ABBR: Record<string, string> = { 'LK Tech': 'LKT', 'LK Platform': 'PLT', Development: 'LKT', Platform: 'PLT', QA: 'QA', DevOps: 'OPS', DataOps: 'DAT', Security: 'SEC', 'Engineering Head': 'ENG' };
+export const ABBR: Record<string, string> = { 'LK Tech': 'LKT', 'LK Platform': 'IP', 'Infrastructure & Platform': 'IP', Development: 'LKT', Platform: 'IP', QA: 'QA', DevOps: 'OPS', DataOps: 'DAT', Security: 'SEC', 'Engineering Head': 'ENG' };
 export const abbr = (role: string) => ABBR[role] ?? role.slice(0, 3).toUpperCase();
 // A change window is stored as an instant; the forms work in IST wall-clock date and time.
 export const fromIso = (iso: string) => { const p = ist(iso); return { date: p.ymd, time: p.time }; };

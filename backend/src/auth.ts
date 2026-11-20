@@ -64,8 +64,12 @@ export async function requireAdmin(req: Request) {
 
 // ---------- who may sign in ----------
 export const isAllowedEmail = (email: string) => {
-  const d = email.toLowerCase().split('@')[1];
-  return !!d && cfg.allowedDomains.includes(d);
+  const mail = email.trim().toLowerCase();
+  const d = mail.split('@')[1];
+  if (!d || !mail.split('@')[0]) return false;
+  // Empty ALLOWED_EMAIL_DOMAINS: trust the sign-in provider (OIDC / Google) — no extra domain gate in Checkpoint.
+  if (!cfg.allowedDomains.length) return true;
+  return cfg.allowedDomains.includes(d);
 };
 // People listed in BOOTSTRAP_ADMINS become admins the first time they sign in. Everyone else starts as a member.
 const bootstrapAccess = (email: string): Access => (cfg.bootstrapAdmins.includes(email.toLowerCase()) ? 'admin' : 'member');

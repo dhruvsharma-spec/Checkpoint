@@ -6,6 +6,7 @@ import { enqueue } from './mail';
 import { approvalRequest, decisionNotice, reminder, CcbMail, MailStage } from './mail.templates';
 import { statusOf } from './status';
 import { BUSINESS_UNITS, CATEGORIES, COMMON_FIELDS, ENVIRONMENTS, LEGACY_FIELDS, OTHER, Spec, applies } from './templates';
+import { calendarEvents } from './activities';
 import { GROUPED, isOwner, kindOf, labelFor, reachableFor, roleOf, serviceTeams, type Owner } from './approvers';
 import { isAllowedEmail, type SessionUser } from './auth';
 import { cfg } from './config';
@@ -268,9 +269,10 @@ export async function saveAnalysis(u: SessionUser, code: string, b: z.infer<type
 
 // ---------- calendar and dashboard ----------
 export async function calendar(from: Date, to: Date, includePending: boolean) {
-  const [ccbs, names] = await Promise.all([
+  const [ccbs, names, activityEvents] = await Promise.all([
     db.ccb.findMany({ where: { windowAt: { gte: from, lt: to } }, include }),
     typeNames(),
+    calendarEvents(from, to),
   ]);
   const events: { kind: string; at: Date; code: string; title: string; sub: string }[] = [];
   for (const c of ccbs) {
@@ -279,6 +281,7 @@ export async function calendar(from: Date, to: Date, includePending: boolean) {
     if (s === 'Cleared' || s === 'Rolled out' || s === 'Rolled back') events.push({ kind: 'release', at: c.windowAt, code: c.code, title: c.title, sub });
     else if (includePending && s === 'Awaiting') events.push({ kind: 'pending', at: c.windowAt, code: c.code, title: c.title, sub });
   }
+  events.push(...activityEvents);
   return events.sort((a, b) => a.at.getTime() - b.at.getTime());
 }
 
@@ -295,6 +298,53 @@ export async function dashboard(u: SessionUser) {
     kpis: { awaitingYou: mine.length, inFlight: count('Awaiting'), cleared: count('Cleared'), rejected: count('Rejected') },
     queue: mine.map(({ d }) => d), next: next?.d ?? null,
     upcoming: all.filter(({ c, d }) => d.status === 'Cleared' && c.windowAt >= now).slice(0, 4).map(({ d }) => d),
+  };
+}
+
+// Org-wide home insights — not personalised to the signed-in user.
+export async function insights() {
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 86400_000);
+  const [rows, names, activityRows, activityUpcoming, activityRecent, users, filedWeek] = await Promise.all([
+    db.ccb.findMany({ include, orderBy: { windowAt: 'asc' }, take: 500 }),
+    typeNames(),
+    db.activity.findMany({
+      where: { startsAt: { gte: now } },
+      include: { createdBy: { select: { name: true, email: true } } },
+      orderBy: { startsAt: 'asc' },
+      take: 5,
+    }),
+    db.activity.count({ where: { startsAt: { gte: now } } }),
+    db.activity.count({ where: { startsAt: { gte: weekAgo, lt: now } } }),
+    db.user.count(),
+    db.ccb.count({ where: { createdAt: { gte: weekAgo } } }),
+  ]);
+  const all = rows.map((c) => ({ c, d: dto(c, names) }));
+  const count = (s: string) => all.filter(({ d }) => d.status === s).length;
+  const upcomingChanges = all
+    .filter(({ c, d }) => (d.status === 'Cleared' || d.status === 'Awaiting') && c.windowAt >= now)
+    .slice(0, 5)
+    .map(({ d }) => d);
+  const recentFiled = [...all].sort((a, b) => b.c.createdAt.getTime() - a.c.createdAt.getTime()).slice(0, 5).map(({ d }) => d);
+  const upcomingActivities = activityRows.map((a) => ({
+    id: a.id, title: a.title, summary: a.summary, team: a.team,
+    startsAt: a.startsAt, endsAt: a.endsAt, createdBy: a.createdBy,
+  }));
+  return {
+    kpis: {
+      total: all.length,
+      awaiting: count('Awaiting'),
+      cleared: count('Cleared'),
+      rejected: count('Rejected'),
+      rolledOut: count('Rolled out'),
+      filedThisWeek: filedWeek,
+      activitiesUpcoming: activityUpcoming,
+      activitiesRecent: activityRecent,
+      people: users,
+    },
+    upcomingChanges,
+    upcomingActivities,
+    recentFiled,
   };
 }
 

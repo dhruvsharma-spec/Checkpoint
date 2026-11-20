@@ -19,6 +19,8 @@ app:
   cookieSecure: "true"
   seedSamples: "false"
   bootstrapAdmins: "dhruv.sharma@lenskart.com"
+  # No domain allowlist on staging: whoever the IdP lets through can sign in. Member on first login; BOOTSTRAP_ADMINS only for admin.
+  allowedEmailDomains: ""
   # The company IdP. The client id and secret are in checkpoint-secrets (OIDC_CLIENT_ID, OIDC_CLIENT_SECRET).
   # The IdP must have https://checkpoint.preprod.lenskart.com/api/auth/oidc/callback registered as the redirect URI.
   oidc:

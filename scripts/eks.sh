@@ -41,6 +41,11 @@ ns_of() { case "${1:-}" in stg) echo devx-stg ;; prod) echo devx-prod ;; *) echo
 confirm() { # confirm <env> <what>
   local a
   [ "$1" = prod ] || return 0
+  # CI (scripts/ci/*, GitLab jobs): set CONFIRM_PROD=prod on the deploy job variables for production.
+  if [ "${CI:-}" = true ] || [ "${CI:-}" = 1 ]; then
+    [ "${CONFIRM_PROD:-}" = prod ] || { echo "Production deploy from CI needs CONFIRM_PROD=prod on the job."; exit 1; }
+    return 0
+  fi
   read -r -p "This $2 in PRODUCTION (devx-prod). Type prod to continue: " a
   [ "$a" = prod ] || { echo "Cancelled."; exit 1; }
 }

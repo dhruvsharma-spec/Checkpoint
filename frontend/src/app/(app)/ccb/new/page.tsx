@@ -13,7 +13,7 @@ const RISKS: Risk[] = ['Low', 'Medium', 'High'];
 // Picked from the lists under Approval matrix. LK Tech is picked per service team, in the "Service belongs to" rows.
 const PEOPLE = ['LK Platform', 'Security', 'QA', 'DevOps', 'DataOps'] as const;
 type PeopleRole = (typeof PEOPLE)[number];
-const PICK_LABEL: Record<PeopleRole, string> = { 'LK Platform': 'Platform Approvers', Security: 'Security sign-off', QA: 'QA sign-off', DevOps: 'DevOps executioners', DataOps: 'DataOps executioners' };
+const PICK_LABEL: Record<PeopleRole, string> = { 'LK Platform': 'Infrastructure & Platform Approval', Security: 'Security sign-off', QA: 'QA sign-off', DevOps: 'DevOps executioners', DataOps: 'DataOps executioners' };
 const KINDS: [Kind, string][] = [['Approver', 'Approvers'], ['Sign-off', 'Sign-offs'], ['Executioner', 'Executioners']];
 // other: a team that is not on the list. Its name is typed, and it has exactly one approver (their email, in approvers[0]).
 type ServiceRow = { team: string; approvers: string[]; other?: boolean };
@@ -148,7 +148,7 @@ export default function NewCcb() {
     if (!(new Date(toWindowIso(ed, et)) > new Date(toWindowIso(d, t)))) { const p = plusHour(d, t); setEd(p.date); setEt(p.time); }
   };
 
-  // Platform Approvers: Pratiti is always on it and cannot be removed; more people can be added. She is asked only when
+  // Infrastructure & Platform: Pratiti is always on it and cannot be removed; more people can be added. She is asked only when
   // she has an email in the Approval matrix, and the backend adds her too.
   const pratiti = lists?.roles.find((r) => r.role === 'LK Platform')?.owners.find((o) => /^pratiti\b/i.test(o.name));
   const pratitiEmail = pratiti?.email ?? '';
@@ -157,7 +157,7 @@ export default function NewCcb() {
   }, [pratitiEmail]);
 
   // ---- the lists people are picked from ----
-  // LK Platform has its own section (Platform Approvers), so it is not offered again as a service team.
+  // Infrastructure & Platform has its own last section, so it is not offered again as a service team.
   const teams = (lists?.roles.find((r) => r.role === 'LK Tech')?.groups ?? []).filter((g) => g.name !== 'LK Platform');
   const ownersOf = (role: PeopleRole) => lists?.roles.find((r) => r.role === role)?.owners ?? [];
   const nameOf = (email: string) => [...teams.flatMap((g) => g.owners), ...PEOPLE.flatMap(ownersOf)].find((o) => o.email === email)?.name ?? email;
@@ -165,7 +165,7 @@ export default function NewCcb() {
   // Everyone who will be asked, as it stands now, in the order they are listed on the CCB.
   const asked = [
     ...service.filter((r) => r.team.trim() && r.approvers.length && (!r.other || COMPANY.test(r.approvers[0]))).map((r) => ({ kind: 'Approver' as Kind, role: 'LK Tech', label: `LK Tech · ${r.team.trim()}`, emails: r.approvers })),
-    ...PEOPLE.filter((r) => people[r].length).map((r) => ({ kind: (lists?.roles.find((x) => x.role === r)?.kind ?? 'Approver') as Kind, role: r as string, label: r === 'LK Platform' ? 'Platform Approvers' : (r as string), emails: people[r] })),
+    ...PEOPLE.filter((r) => people[r].length).map((r) => ({ kind: (lists?.roles.find((x) => x.role === r)?.kind ?? 'Approver') as Kind, role: r as string, label: r === 'LK Platform' ? 'Infrastructure & Platform Approval' : (r as string), emails: people[r] })),
   ];
   const askedCount = asked.reduce((n, a) => n + a.emails.length, 0);
   // Not a decision, a nudge: the highest risk among the template's default and the answers given.
@@ -404,7 +404,7 @@ export default function NewCcb() {
           </Section>
         ))}
 
-        <Section title="Platform Approvers">
+        <Section title="Infrastructure & Platform Approval">
           <div style={{ maxWidth: 560 }}><MultiSelect label={PICK_LABEL['LK Platform']} values={people['LK Platform']} options={toOptions(ownersOf('LK Platform'))} locked={pratitiEmail ? [pratitiEmail] : []} onChange={(v) => setPeople((p) => ({ ...p, 'LK Platform': v }))} />
             {pratiti && !pratitiEmail && <div style={{ fontSize: 12.5, color: 'var(--warn)', fontWeight: 600, marginTop: 8 }}>Pratiti Basu is always part of this, but has no email yet, so she cannot be asked. An admin can add it under Approval matrix.</div>}</div>
         </Section>
@@ -412,6 +412,7 @@ export default function NewCcb() {
           <Section title="Details"><div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>{detailFields.map((f) => <Input key={f.k} f={f} value={vals[f.k] ?? ''} onChange={(v) => set(f.k, v)} engine={vals.engine} inv={inv} />)}</div></Section>
           {problemsBox}
           {serverBox}
+
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', borderTop: '1px solid var(--line)', paddingTop: 18 }}>
             <span style={{ flex: '1 1 200px', fontSize: 13, color: 'var(--ink2)' }}>Everyone you picked gets an email right away and replies separately.</span>
             <button type="button" className="btnP" disabled={busy} onClick={submit}>{busy ? 'Filing…' : 'Request approval →'}</button>

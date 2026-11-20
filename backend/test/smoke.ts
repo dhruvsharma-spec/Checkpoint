@@ -88,7 +88,7 @@ class Client {
   const code = made.json?.code;
   ok(made.status === 201 && /^CCB-\d+$/.test(code), `a CCB is filed with a generated code (${code})`);
   const labels = made.json?.approvals?.map((a: any) => a.label);
-  ok(labels?.join() === 'LK Tech · POS approver,LK Platform approver,LK Platform approver,QA sign-off,DevOps executioner', `each person picked is asked: ${labels?.join(', ')}`);
+  ok(labels?.join() === 'LK Tech · POS approver,Infrastructure & Platform approver,Infrastructure & Platform approver,QA sign-off,DevOps executioner', `each person picked is asked: ${labels?.join(', ')}`);
   ok(made.json.approvals.map((a: any) => a.kind).join() === 'Approver,Approver,Approver,Sign-off,Executioner', 'and each is an approver, a sign-off or an executioner');
   ok(made.json.ownerTeam === 'POS' && made.json.approvals.every((a: any) => a.owners.length === 1), 'the service belongs to POS, and each step names the one person picked');
 

@@ -7,12 +7,16 @@ import { cfg } from './config';
 import { db } from './db';
 import { HttpError, bad, body, conflict, forbidden, handle } from './http';
 import { inventory } from './inventory';
+import * as activities from './activities';
 import { GROUPED, approvers, describeChange, saveApprovers, stepsOfEmail, type Owner } from './approvers';
 import * as S from './schemas';
 
 export const api = Router();
 const param = (v: string | string[] | undefined) => decodeURIComponent(String(v ?? ''));
 const safeNext = (n?: string | null) => (n && n.startsWith('/') && !n.startsWith('//') ? n : '/');
+// After an external provider signs someone in, send them through /login so the aperture finish animation can run.
+const loginAfterSso = (next: string) =>
+  `${cfg.webUrl}/login?sso=complete&next=${encodeURIComponent(safeNext(next))}`;
 
 // ---------- health (public, used by the Kubernetes probes) ----------
 // /health checks the database too (readiness: stop sending traffic). /live does not (liveness: a database outage must
@@ -62,7 +66,7 @@ api.get('/auth/google/callback', handle(async (req, res) => {
     const u = await A.googleCallback(code);
     A.setSessionCookie(res, await A.signSession(u));
     A.clearCookie(res, A.OAUTH_COOKIE);
-    res.redirect(cfg.webUrl + safeNext(next));
+    res.redirect(loginAfterSso(next));
   } catch (e) {
     fail(e instanceof HttpError ? 'domain' : 'google');
   }
@@ -96,7 +100,7 @@ api.get('/auth/oidc/callback', handle(async (req, res) => {
     const { user, next } = await O.finish(code, state, cookie);
     A.setSessionCookie(res, await A.signSession(user));
     A.clearCookie(res, O.OIDC_COOKIE);
-    res.redirect(cfg.webUrl + safeNext(next));
+    res.redirect(loginAfterSso(next));
   } catch (e) {
     console.warn(`OIDC: sign-in failed: ${flat(e instanceof Error ? e.message : e, 300)}`);
     fail(e instanceof HttpError && e.message.includes('domain') ? 'domain' : 'oidc');
@@ -155,12 +159,24 @@ api.get('/inventory', handle(async (req) => { await A.requireUser(req); return i
 // ---------- CCBs ----------
 api.get('/templates', handle(async (req) => { await A.requireUser(req); return ccb.catalog(); }));
 api.get('/dashboard', handle(async (req) => ccb.dashboard(await A.requireUser(req))));
+api.get('/insights', handle(async (req) => { await A.requireUser(req); return ccb.insights(); }));
 api.get('/calendar', handle(async (req) => {
   await A.requireUser(req);
   const from = new Date(String(req.query.from ?? '')), to = new Date(String(req.query.to ?? ''));
   if (isNaN(from.getTime()) || isNaN(to.getTime()) || to <= from || to.getTime() - from.getTime() > 100 * 86400_000) throw bad('Provide a valid from and to range (max 100 days)');
   return ccb.calendar(from, to, req.query.pending === '1');
 }));
+
+// ---------- organisation activities (no CCB required) ----------
+api.get('/activities', handle(async (req) => { await A.requireUser(req); return activities.list(); }));
+api.post('/activities', handle(async (req, res) => {
+  const u = await A.requireUser(req);
+  const a = await activities.create(u, body(req, S.createActivity));
+  res.status(201).json(a);
+}));
+api.get('/activities/:id', handle(async (req) => { await A.requireUser(req); return activities.get(param(req.params.id)); }));
+api.patch('/activities/:id', handle(async (req) => activities.update(await A.requireUser(req), param(req.params.id), body(req, S.updateActivity))));
+api.delete('/activities/:id', handle(async (req) => activities.remove(await A.requirePower(req), param(req.params.id))));
 
 api.get('/ccbs', handle(async (req) => {
   await A.requireUser(req);

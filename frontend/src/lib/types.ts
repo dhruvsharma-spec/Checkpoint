@@ -26,7 +26,30 @@ export type Dashboard = {
   kpis: { awaitingYou: number; inFlight: number; cleared: number; rejected: number };
   queue: Ccb[]; next: Ccb | null; upcoming: Ccb[];
 };
-export type CalEvent = { kind: 'release' | 'pending'; at: string; code: string; title: string; sub: string };
+export type InsightActivity = {
+  id: string; title: string; summary: string; team: string;
+  startsAt: string; endsAt: string; createdBy: { name: string; email: string };
+};
+export type Insights = {
+  kpis: {
+    total: number; awaiting: number; cleared: number; rejected: number; rolledOut: number;
+    filedThisWeek: number; activitiesUpcoming: number; activitiesRecent: number; people: number;
+  };
+  upcomingChanges: Ccb[];
+  upcomingActivities: InsightActivity[];
+  recentFiled: Ccb[];
+};
+export type CalEvent = { kind: 'release' | 'pending' | 'activity'; at: string; code: string; title: string; sub: string };
+export type Activity = {
+  id: string; title: string; summary: string; detail: string; team: string;
+  startsAt: string; endsAt: string; createdAt: string; updatedAt: string;
+  createdBy: { name: string; email: string };
+};
+export type ActivitiesPage = {
+  upcoming: Activity[]; recent: Activity[];
+  teams: string[];
+  insight: { upcomingCount: number; recentCount: number; next: Activity | null; last: Activity | null };
+};
 export type Access = 'member' | 'power' | 'admin';
 export type User = { id: string; email: string; name: string; access: Access };
 export type ApproverGroup = { name: string; owners: Owner[] };

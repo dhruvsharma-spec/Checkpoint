@@ -2,9 +2,10 @@
 #
 # Edited from the UI (CCB, then Approval matrix) by an admin, and can be edited by hand too.
 #
-#   Approvers:     LK Tech (one list per team that owns a service), LK Platform
+#   Approvers:     LK Tech (one list per team that owns a service)
 #   Sign-offs:     Security, QA
 #   Executioners:  DevOps, DataOps
+#   Last:          Infrastructure & Platform (YAML key: LK Platform)
 #
 # The person filing a CCB picks the actual people from these lists. A name with no email is listed only:
 # it is never emailed and cannot be picked.

@@ -12,7 +12,7 @@ import { db } from './db';
 // being used and the problem is shown in the UI.
 //
 // There are three kinds of people on a CCB:
-//   approvers     LK Tech (split into the teams that own services: POS, Juno, ...) and LK Platform
+//   approvers     LK Tech (split into the teams that own services: POS, Juno, ...) and Infrastructure & Platform (stored as LK Platform)
 //   sign-offs     Security and QA
 //   executioners  DevOps and DataOps
 // The requester picks the actual people from these lists, and each person picked is asked.
@@ -28,10 +28,12 @@ const KIND: Record<string, Kind> = { 'LK Tech': 'Approver', 'LK Platform': 'Appr
 const LEGACY: Record<string, StepRole> = { Development: 'LK Tech', Platform: 'LK Platform' };
 export const roleOf = (role: string): string => LEGACY[role] ?? role;
 export const kindOf = (role: string): Kind => KIND[roleOf(role)] ?? 'Approver';
-// "LK Tech · POS approver", "LK Platform approver", "Security sign-off", "DevOps executioner".
+// Shown in the UI. The stored role key stays "LK Platform"; only the label changed.
+export const displayRole = (role: string) => (roleOf(role) === 'LK Platform' ? 'Infrastructure & Platform' : roleOf(role));
+// "LK Tech · POS approver", "Infrastructure & Platform approver", "Security sign-off", "DevOps executioner".
 export const labelFor = (role: string, group?: string | null) => {
   const r = roleOf(role), k = kindOf(r);
-  return `${r}${group ? ` · ${group}` : ''} ${k === 'Sign-off' ? 'sign-off' : k.toLowerCase()}`;
+  return `${displayRole(r)}${group ? ` · ${group}` : ''} ${k === 'Sign-off' ? 'sign-off' : k.toLowerCase()}`;
 };
 
 export type Owner = { name: string; email: string };
@@ -143,9 +145,10 @@ const HEADER = `# WHO IS ASKED ABOUT A CCB
 #
 # Edited from the UI (CCB, then Approval matrix) by an admin.
 #
-#   Approvers:     LK Tech (one list per team that owns a service), LK Platform
+#   Approvers:     LK Tech (one list per team that owns a service)
 #   Sign-offs:     Security, QA
 #   Executioners:  DevOps, DataOps
+#   Last:          Infrastructure & Platform (YAML key: LK Platform)
 #
 # The person filing a CCB picks the actual people from these lists. A name with no email is listed only:
 # it is never emailed and cannot be picked.

@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastCtx.Provider value={show}>
       {children}
-      {msg && <div role="status" className="rise card" style={{ position: 'fixed', left: '50%', bottom: 26, transform: 'translateX(-50%)', zIndex: 90, padding: '12px 22px', borderRadius: 999, fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', background: 'var(--toast)', color: 'var(--toastInk)', border: 0 }}>{msg}</div>}
+      {msg && <div role="status" className="rise card" style={{ position: 'fixed', left: '50%', bottom: 26, transform: 'translateX(-50%)', zIndex: 90, padding: '12px 18px', borderRadius: 10, fontWeight: 600, fontSize: 14, whiteSpace: 'nowrap', background: 'var(--toast)', color: 'var(--toastInk)', border: 0 }}>{msg}</div>}
     </ToastCtx.Provider>
   );
 }

@@ -45,3 +45,23 @@ export const saveApprovers = z.object({
     groups: z.array(z.object({ name: z.string().trim().min(1).max(60), owners: z.array(owner).max(50) })).max(30).optional(),
   })).max(STEP_ROLES.length),
 });
+
+// Organisation-level activity (no CCB). Details and end time are required; past start is refused.
+// UI chips are DevOps / DataOps / Security / Other; "Other" stores a typed team name.
+export const ACTIVITY_TEAM_CHOICES = ['DevOps', 'DataOps', 'Security', 'Other'] as const;
+export const createActivity = z.object({
+  title: z.string().trim().min(3).max(200),
+  summary: z.string().trim().min(3).max(500), // "Details" in the UI
+  detail: z.string().trim().max(5000).optional().default(''),
+  team: z.string().trim().min(2).max(60),
+  startsAt: when,
+  endsAt: when,
+});
+export const updateActivity = z.object({
+  title: z.string().trim().min(3).max(200).optional(),
+  summary: z.string().trim().min(3).max(500).optional(),
+  detail: z.string().trim().max(5000).optional(),
+  team: z.string().trim().min(2).max(60).optional(),
+  startsAt: when.optional(),
+  endsAt: when.optional(),
+});

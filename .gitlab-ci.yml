@@ -1,0 +1,126 @@
+# Checkpoint CI/CD — manual pipeline with inputs (Run pipeline → choose branch, environment, optional tag).
+# Runner: Linux + Docker (build job uses docker-in-docker). AWS creds in CI/CD variables (see docs/CI.md).
+#
+# Typical flow: verify (optional) → build:images → deploy:stg — each stage is manual until you click Play.
+
+spec:
+  inputs:
+    git_ref:
+      type: string
+      default: main
+      description: Branch or tag to build and deploy
+    image_tag:
+      type: string
+      default: ""
+      description: ECR image tag (empty = UTC timestamp at build time, e.g. 20261120-1030)
+    deploy_env:
+      type: string
+      default: stg
+      options:
+        - stg
+        - prod
+      description: Target EKS environment (deploy job uses this)
+
+workflow:
+  name: "Checkpoint $[[ inputs.deploy_env ]] · $[[ inputs.git_ref ]]"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+    - if: $CI_PIPELINE_SOURCE == "api"
+    - if: $CI_PIPELINE_SOURCE == "trigger"
+
+stages:
+  - verify
+  - build
+  - deploy
+
+variables:
+  GIT_REF: $[[ inputs.git_ref ]]
+  IMAGE_TAG: $[[ inputs.image_tag ]]
+  DEPLOY_ENV: $[[ inputs.deploy_env ]]
+  # EKS targets (must match scripts/eks.sh)
+  AWS_DEFAULT_REGION: ap-south-1
+  BACKUP_BUCKET: ${BACKUP_BUCKET}
+
+.default-docker:
+  image: docker:27.5.1-cli
+  services:
+    - docker:27.5.1-dind
+  variables:
+    DOCKER_TLS_CERTDIR: "/certs"
+  before_script:
+    - apk add --no-cache bash git aws-cli curl
+    - chmod +x scripts/ci/*.sh scripts/eks.sh scripts/check.sh
+    - ./scripts/ci/prepare-ref.sh
+
+.default-eks:
+  image:
+    name: amazon/aws-cli:2.22.12
+    entrypoint: [""]
+  before_script:
+    - yum install -y -q tar gzip >/dev/null
+    - curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
+    - curl -fsSL https://get.helm.sh/helm-v3.16.4-linux-amd64.tar.gz | tar -xz -C /tmp && mv /tmp/linux-amd64/helm /usr/local/bin/helm
+    - chmod +x scripts/ci/*.sh scripts/eks.sh
+    - ./scripts/ci/prepare-ref.sh
+    - aws sts get-caller-identity
+    - aws eks update-kubeconfig --name lk-tech-infra-02-eks --region ap-south-1 --alias deploy >/dev/null
+
+verify:
+  extends: .default-docker
+  stage: verify
+  when: manual
+  allow_failure: false
+  script:
+    - ./scripts/check.sh
+  rules:
+    - when: manual
+
+build:images:
+  extends: .default-docker
+  stage: build
+  when: manual
+  script:
+    - ./scripts/ci/build-images.sh
+  artifacts:
+    reports:
+      dotenv: build.env
+    expire_in: 2 weeks
+  rules:
+    - when: manual
+
+deploy:stg:
+  extends: .default-eks
+  stage: deploy
+  when: manual
+  needs:
+    - job: build:images
+      artifacts: true
+  script:
+    - test -n "${IMAGE_TAG:-}" || { echo "No IMAGE_TAG from build job; run build:images first or set pipeline input image_tag."; exit 1; }
+    - ./scripts/ci/deploy-eks.sh stg "$IMAGE_TAG"
+  environment:
+    name: staging
+    url: https://checkpoint.preprod.lenskart.com
+  rules:
+    - if: $[[ inputs.deploy_env ]] == "stg"
+      when: manual
+    - when: never
+
+deploy:prod:
+  extends: .default-eks
+  stage: deploy
+  when: manual
+  needs:
+    - job: build:images
+      artifacts: true
+  variables:
+    CONFIRM_PROD: prod
+  script:
+    - test -n "${IMAGE_TAG:-}" || { echo "No IMAGE_TAG from build job."; exit 1; }
+    - ./scripts/ci/deploy-eks.sh prod "$IMAGE_TAG"
+  environment:
+    name: production
+  rules:
+    - if: $[[ inputs.deploy_env ]] == "prod"
+      when: manual
+    - when: never

@@ -18,6 +18,7 @@ app:
   devLogin: "false"
   # Secure cookies need HTTPS. Only staging, reached by port-forward until its certificate exists, turns this off.
   cookieSecure: "true"
+  # Comma-separated sign-in allowlist. Empty = no extra domain check (trust OIDC / Google). CCB approvers use the same rule.
   allowedEmailDomains: "lenskart.com,lenskart.in"
   bootstrapAdmins: "dhruv.sharma@lenskart.com"
   enabledCcbTypes: "general"

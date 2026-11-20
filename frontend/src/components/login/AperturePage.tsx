@@ -84,7 +84,7 @@ export function AperturePage({ flow }: { flow: Flow }) {
               {flow.cfg?.oidc?.enabled && <button type="button" className="lgA-g" onClick={flow.oidc}><BrandMark size={20} id="oidc" />Continue with {flow.cfg.oidc.label}</button>}
               {flow.cfg?.google && <button type="button" className="lgA-g" onClick={flow.google}><GoogleMark />Continue with Google</button>}
               <ErrorNote flow={flow} />
-              <p className="lgA-note">Access is limited to {flow.domains} accounts.</p>
+              {flow.accessNote ? <p className="lgA-note">{flow.accessNote}</p> : null}
               <DevLogin flow={flow} />
             </>
           )}
