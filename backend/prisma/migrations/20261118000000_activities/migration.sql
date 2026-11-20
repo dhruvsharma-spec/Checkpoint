@@ -3,7 +3,7 @@ CREATE TABLE `Activity` (
     `id` VARCHAR(191) NOT NULL,
     `title` VARCHAR(200) NOT NULL,
     `summary` VARCHAR(500) NOT NULL DEFAULT '',
-    `detail` TEXT NOT NULL,
+    `detail` TEXT NOT NULL DEFAULT '',
     `startsAt` DATETIME(3) NOT NULL,
     `endsAt` DATETIME(3) NULL,
     `createdById` VARCHAR(191) NOT NULL,
